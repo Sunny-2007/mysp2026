@@ -12,7 +12,7 @@
 - **Deadline:** `{YYYY/MM/DD HH:MM}`
 - **Discussion / Q&A:** `{COURSE_DISCUSSION_LINK}`
 - **Submission:** `{NTU_COOL_SUBMISSION_LINK}`
-- **Grading environment:** `{linux1 / designated workstation}`
+- **Grading environment:** `{ws1 / designated workstation}`
 - **Release package:** `SP2026_HW1_release_4todo.zip`
 
 Spaces, capitalization, newlines, and prompts are part of the protocol.
