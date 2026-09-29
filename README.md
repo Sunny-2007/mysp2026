@@ -8,7 +8,7 @@ Full student protocol: [SPEC.md](SPEC.md). Changes: [CHANGELOG.md](CHANGELOG.md)
 | 1 | read/exit and update → add → close sessions; complete response writes | 1 |
 | 2 | Nonblocking fcntl record locks, local ownership, cleanup | 3 |
 | 3 | select, fragments, multiple commands per send | 1 |
-| 4 | Two-client confirmed transfer and deferred record acquisition | 2 |
+| 4 | Two-client confirmed transfer and immediate lock failure | 2 |
 
 ## Build and develop
 
@@ -60,19 +60,23 @@ Transfer and receive still accept cancel in their specified states.
 ## Transfer
 
 B registers with `receive 902002`; A sends `transfer 902001 902002 100`.
-Both clients must connect to the same server. Transfer waits for conflicting
-records with F_SETLK retries and the supplied timer, while select continues
-serving other clients. Never keep the first lock when the second conflicts.
-Read balances only after both locks are acquired. Then send the offer; keep
-both locks until B accepts/rejects or either participant cancels/leaves.
-Only acceptance writes the transfer. A competing update returns Locked.
+Both clients must connect to the same server. If either account is occupied,
+reply Locked immediately to A, release any partially acquired lock, and leave
+A READY and B registered in WAIT_RECEIVE. Do not create a pending request or
+notify B. There is no timer or automatic retry; A must send a new transfer.
+
+After both locks succeed, read/check current balances and send the offer. Keep
+both locks until B accepts/rejects or either participant cancels/leaves. Only
+acceptance writes the transfer. select continues serving other clients while
+waiting for B's decision. A competing read/update/transfer cannot acquire the
+owned records. Unrelated accounts remain usable.
 
 ## Provided versus student work
 
-Socket setup, parsing, record I/O, input buffers, dispatch, transfer timer,
+Socket setup, parsing, record I/O, input buffers, dispatch,
 and deferred close infrastructure are provided. Students implement handlers,
 lock/state ownership and cleanup, drain_commands, and select integration.
-Exact messages, invalid-input rules, and transfer waiting states are in SPEC.
+Exact messages, invalid-input rules, and transfer states are in SPEC.
 
 ## Submission
 

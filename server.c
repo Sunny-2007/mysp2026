@@ -5,15 +5,14 @@
 #include <limits.h>
 #include <signal.h>
 #include <stdint.h>
-#include <time.h>
 
 /*
  * Implement four TODOs in order:
  *   1. READY commands, complete response writes, update/add/close sessions
  *   2. Nonblocking fcntl record locks and local ownership
  *   3. select multiplexing, fragmented input and batched commands
- *   4. Confirmed two-client transfer and deferred lock acquisition
- * Socket setup, parsers, record I/O, buffers and transfer timer are supplied.
+ *   4. Confirmed two-client transfer and immediate lock failure
+ * Socket setup, parsers, record I/O and input buffers are supplied.
  */
 
 static const char *welcome_banner =
@@ -289,25 +288,21 @@ static void cleanup_transfer(request *req) {
 
 static bool handle_transfer_ready(request *req, const char *line) {
     /* TODO 4: receive <id>, transfer <source> <target> <amount>.
-     * Validate, match a receiver, acquire source then target locks,
-     * check balances, and create the offer without writing records yet.
-     * A conflict pairs both clients in WAIT_TRANSFER_LOCK/WAIT_TRANSFER_PEER.
-     * Release any partial lock, send each waiting notification once, and
-     * retry via the supplied timer. Re-read after BOTH locks are acquired.
-     * Immediate balance failure leaves the receiver registered; deferred
-     * balance failure terminates the pair and notifies both clients.
+     * Match a local receiver, check local owners, and try both F_WRLCK locks.
+     * Any conflict: release acquired locks, reply Locked to the sender,
+     * leave it READY, and preserve the receiver's WAIT_RECEIVE registration.
+     * Never queue or automatically retry a failed transfer.
+     * Only after BOTH locks succeed, read/check balances and create an offer.
+     * Balance failure also releases both locks and preserves registration.
      */
-    (void)line;
+    (void)req; (void)line;
     (void)parse_transfer_command;
-    (void)receive_prompt;
-    (void)transfer_prompt;
-    (void)accept_prompt;
-    (void)send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
+    (void)receive_prompt; (void)transfer_prompt; (void)accept_prompt;
     return false;
 }
 
 static bool handle_wait_transfer(request *req, const char *line) {
-    /* TODO 4: Handle receive, transfer-lock-wait and confirmation states.
+    /* TODO 4: Handle receive and transfer-confirmation states.
      * Only the matched receiver may accept/reject; only the sender cancels
      * a pending offer. Exit/invalid input use close_client() cleanup.
      * Complete/cancel/reject must release both locks and registration.
@@ -333,14 +328,7 @@ static bool handle_command(request *req, const char *line) {
 
 
 
-static bool retry_transfer(request *req) {
-    /* TODO 4: one attempt to acquire BOTH records. Release any first lock
-     * on conflict. Read/validate only after both are held; then publish
-     * the offer or end the paired wait with a balance error to both clients.
-     */
-    (void)req;
-    return true;
-}
+
 
 static bool drain_commands(request *req) {
     /* TODO 3: dispatch ALL complete lines in order and preserve a partial tail.
@@ -350,51 +338,6 @@ static bool drain_commands(request *req) {
      */
     (void)req; (void)handle_command;
     return true;
-}
-
-/* Supplied timer infrastructure. The retry callbacks are student TODOs.
- * Positive timeout sleeps in select(); no file fd is used as a lock notifier.
- */
-static int64_t retry_due_ms;
-static int64_t monotonic_ms(void) {
-    struct timespec now;
-    if (clock_gettime(CLOCK_MONOTONIC, &now) < 0) ERR_EXIT("clock_gettime");
-    return (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
-}
-
-static bool has_lock_waiters(void) {
-    for (int fd = 0; fd < maxfd; ++fd) {
-        request *req = &requestP[fd];
-        if (req->conn_fd >= 0 && !req->close_pending &&
-            req->state == WAIT_TRANSFER_LOCK) return true;
-    }
-    return false;
-}
-
-static struct timeval *lock_retry_timeout(struct timeval *timeout) {
-    if (!has_lock_waiters()) { retry_due_ms = 0; return NULL; }
-    int64_t now = monotonic_ms();
-    if (retry_due_ms == 0) retry_due_ms = now + LOCK_RETRY_MS;
-    int64_t left = retry_due_ms > now ? retry_due_ms - now : 0;
-    timeout->tv_sec = (time_t)(left / 1000);
-    timeout->tv_usec = (suseconds_t)((left % 1000) * 1000);
-    return timeout;
-}
-
-static void service_lock_waiters(void) {
-    if (!has_lock_waiters()) { retry_due_ms = 0; return; }
-    int64_t now = monotonic_ms();
-    if (retry_due_ms == 0) { retry_due_ms = now + LOCK_RETRY_MS; return; }
-    if (now < retry_due_ms) return;
-    retry_due_ms = now + LOCK_RETRY_MS;
-    for (int fd = 0; fd < maxfd; ++fd) {
-        request *req = &requestP[fd];
-        if (req->conn_fd < 0 || req->close_pending) continue;
-        bool keep = true;
-        if (req->state == WAIT_TRANSFER_LOCK) keep = retry_transfer(req);
-        if (keep && !req->close_pending) keep = drain_commands(req);
-        if (!keep) req->close_pending = true;
-    }
 }
 
 static void init_server(unsigned short port) {
@@ -436,19 +379,17 @@ static void init_server(unsigned short port) {
 
 
 static void serve_clients(void) {
+    (void)drain_commands; /* Used by the TODO 3 event loop. */
     /*
      * TODO 3: Replace this one-client-at-a-time loop with select().
      * Keep independent client states and partial input, and handle cleanup.
-     * Use lock_retry_timeout(&timeout) in select(), and call
-     * service_lock_waiters() after each readable batch (also on timeout).
+     * No lock-retry timer is needed; select may use a NULL timeout.
      * Call close_failed_clients(&master) before select(), skip close_pending
      * clients in a readable batch, and use drain_commands() after input.
      * The supplied sequential loop supports Tasks 1 and 2 development.
-     * Implement this loop for Tasks 3 and 4; integrate the supplied timer
-     * so pending transfers can retry without freezing other clients.
+     * Implement this loop for Tasks 3 and 4. Transfer lock conflicts return
+     * Locked immediately; no waiting states or automatic retries exist.
      */
-    (void)lock_retry_timeout;
-    (void)service_lock_waiters;
     while (1) {
         close_failed_clients(NULL);
         struct sockaddr_in peer;

@@ -26,7 +26,6 @@
 #define ACCOUNT_ID_END 902020
 #define MAX_BALANCE 1000000
 #define MAX_MSG_LEN 512
-#define LOCK_RETRY_MS 50
 #define RECORD_PATH "./accountRecord"
 
 typedef struct {
@@ -39,9 +38,7 @@ enum client_state {
     WAIT_UPDATE,
     WAIT_RECEIVE,
     WAIT_TRANSFER_OUT,
-    WAIT_TRANSFER_IN,
-    WAIT_TRANSFER_LOCK,
-    WAIT_TRANSFER_PEER
+    WAIT_TRANSFER_IN
 };
 
 enum input_status {

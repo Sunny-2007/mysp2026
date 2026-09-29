@@ -1,6 +1,6 @@
 # System Programming 2026: csieLedger
 
-> Revision: 2026-09-29 — four TODOs, update sessions with `close`, total 7 points.
+> Revision: 2026-09-29 — four TODOs, update sessions with `close`, immediate transfer lock failure; total 7 points.
 
 ###### tags: `NTU-SP`
 
@@ -28,7 +28,7 @@ and one `select()` event loop.
 | 1 | Complete response writes, read/exit, update → add → close sessions | 1 |
 | 2 | Nonblocking `fcntl()` record locks and local ownership | 3 |
 | 3 | `select()`, concurrent clients, fragmented and batched input | 1 |
-| 4 | Two-client confirmed transfer, deferred two-record acquisition, cleanup | 2 |
+| 4 | Two-client confirmed transfer, nonblocking two-record acquisition, cleanup | 2 |
 | | **Total** | **7** |
 
 Implement **1 → 2 → 3 → 4**. Use one build throughout:
@@ -58,8 +58,8 @@ The main rules are:
 - One client may send multiple complete commands in one write. Process them
   in order and retain any incomplete tail for later input.
 - Transfer needs two clients on the **same server**. Transfer lock conflicts
-  may wait and retry while `select()` continues serving other clients.
-  This transfer-only waiting rule is different from `update`'s immediate failure.
+  immediately return `Locked`, release any partially acquired lock, and end
+  that request. There is no lock-wait queue, timer, or automatic retry.
 
 :::info
 ### Changes from the previous release
@@ -68,7 +68,9 @@ Old TODOs 1 and 2 are now TODO 1. Old TODOs 3, 4, 5 become TODOs 2, 3, 4.
 The old 3B update mode and stage3 development build have been removed.
 In WAIT_UPDATE, use `close` instead of `cancel`. An `add` no longer ends the
 session; both successful adds and balance-range failures stay in WAIT_UPDATE.
-Transfer/receive cancellation still uses `cancel` where allowed.
+Transfer/receive cancellation still uses `cancel` where allowed. Transfer
+lock conflicts now fail immediately; all former transfer retry timers and
+lock-wait states have been removed.
 :::
 
 ## 1. Goal and Architecture
@@ -109,7 +111,7 @@ The starter compiles but intentionally does not pass the tests.
 Supplied infrastructure includes socket creation/bind/listen, opening the
 record file, per-client storage, strict parsers, record I/O helpers,
 `append_input()`/`pop_command()`, command dispatch, deferred failed-notification
-cleanup, and a monotonic transfer-retry timer. You implement command handlers,
+cleanup. You implement command handlers,
 lock/state cleanup, buffer draining, and the select loop.
 
 ```bash
@@ -197,8 +199,6 @@ and **no terminating newline**. Their exact C strings are:
 | READY | read, update, receive, transfer, exit | Depends on command |
 | WAIT_UPDATE | add, close, exit | add stays; close → READY; exit disconnects |
 | WAIT_RECEIVE | cancel, exit | cancel → READY; exit disconnects |
-| WAIT_TRANSFER_LOCK | cancel, exit | Paired transfer waiting for records |
-| WAIT_TRANSFER_PEER | reject, exit | Receiver reserved by that waiting transfer |
 | WAIT_TRANSFER_OUT | cancel, exit | Sender awaiting receiver decision |
 | WAIT_TRANSFER_IN | accept, reject, exit | Receiver deciding an acquired offer |
 
@@ -209,7 +209,9 @@ that client after cleanup. There is no `WAIT_UPDATE_LOCK` state.
 
 Complete `send_text()` first because the welcome message uses it. Write the
 entire string, handling short writes and `EINTR`. Return 0 on success and -1
-on failure, including a write that makes no progress.
+on failure, including a write that makes no progress. `send_text()` reports
+failure; its caller is responsible for connection cleanup as specified in
+Section 9. Do not hide a failed send by continuing the command normally.
 
 ### 5.1 READY commands
 
@@ -279,11 +281,37 @@ read 902001    → balance 570
 exit           → disconnect
 ```
 
-### 5.4 Connection cleanup does not undo writes
+### 5.4 Releasing a session versus disconnecting
 
-If a client exits, sends invalid input, or disconnects during WAIT_UPDATE,
-release its lock and owner. Preserve all successful adds already written.
-For example, after `add 25` changes 500 to 525, a disconnect leaves 525.
+**Releasing a record lock is not the same as closing the client connection.**
+`close` releases the update session and returns to READY on the same socket.
+To disconnect normally after `close`, send `exit` separately. You may also send
+`exit` directly during WAIT_UPDATE; a preceding `close` is not required.
+
+The `exit` command is valid in both READY and WAIT_UPDATE. If used during
+WAIT_UPDATE, the server preserves all successful adds, releases the record
+lock and matching local ownership, clears the update-session fields, sends
+`>>> Client exit.\n`, and closes the client connection. No READY prompt follows.
+
+A syntactically invalid command, or a command used in the wrong state, follows
+the global invalid-command rule: clean up any active update session, send the
+invalid-command response, and close the connection. Detected EOF or an input
+error also cleans up and closes the connection; EOF requires no reply.
+None of these paths rolls back a successful add.
+
+A syntactically valid `add` whose resulting balance is out of range is **not**
+an invalid command: it keeps the session and lock active, as in Section 5.2.
+
+| Action in WAIT_UPDATE | Record lock | Connection | Earlier successful adds |
+|---|---|---|---|
+| `close` | Released | Open; READY | Preserved |
+| `exit` | Released | Closed after exit response | Preserved |
+| Invalid command | Released | Closed after invalid-command response | Preserved |
+| Detected EOF / input error | Released | Closed | Preserved |
+| Valid `add`, result out of range | Retained | Open; WAIT_UPDATE | Preserved |
+
+For example, after `add 25` changes 500 to 525, both `close` and `exit` leave
+525 in the file. Only `exit` disconnects the client.
 
 Task 1 combines the former basic-command and update-workflow tasks. Its public
 cases include repeated adds, immediate persistence, range errors, close with
@@ -316,20 +344,90 @@ For `read`/`update`, either a local-owner conflict or `F_SETLK` failure with
 ">>> Locked.\nPlease enter your command: "
 ```
 
-The requester remains READY and acquires no ownership. Other syscall failures
-must follow error cleanup rather than being treated as a successful acquisition.
-A failed attempt must never release somebody else's lock.
+The requester remains READY and acquires no ownership. A failed attempt must
+never release somebody else's lock.
 
-Maintain `record_owner[index]`: `-1` means unowned; otherwise it is the owning
-client fd. Check it before reading or taking a lock, because fcntl cannot
-separate clients inside the same process. An add success or range error must
-not clear this entry. On cleanup, clear/unlock only ownership belonging to
-that operation.
+An unexpected `fcntl()` error is an **internal operation failure**, not a
+`Locked` response. If lock acquisition fails for a reason other than
+`EACCES`/`EAGAIN`, clean up only resources acquired by the current operation
+and close the affected client connection. Do not send `Locked`, a success
+response, or a READY prompt. No additional client-facing error message is
+required; diagnostic output to stderr is allowed. This acquisition failure
+alone must not terminate the server or disconnect unrelated clients.
+
+If a transfer's second acquisition fails unexpectedly, release its first lock
+before closing the sender. Since no offer was established, the receiver keeps
+its registration and receives no peer-disconnected notification. For cleanup
+of an already paired operation, follow Section 9.
+
+Such internal failures are not generated in graded cases. The cleanup policy
+assumes cleanup/unlock operations themselves succeed; recovery when an unlock
+or another cleanup operation also fails is outside the assignment's scope.
+
+Traditional POSIX record locks are associated with a process rather than
+with an individual client connection. Therefore, `fcntl()` alone cannot
+distinguish two clients connected to the same server process.
+
+Maintain `record_owner[index]` for records exclusively owned by an active
+update or an acquired transfer operation:
+
+| Value | Meaning |
+|---|---|
+| `-1` | No local client owns this record |
+| Client fd | The client that owns this record |
+
+Before `read`, `update`, or a transfer acquisition attempt accesses a record,
+check `record_owner[]`. If another local client owns it, do not call `F_SETLK`
+to acquire or convert a lock on that record:
+
+- `read` and `update` immediately return `Locked` and remain READY.
+- A transfer also immediately returns `Locked` to its sender. Release any
+  partially acquired lock, keep the sender READY, and preserve the receiver's
+  WAIT_RECEIVE registration. Do not retain a request or overwrite the owner.
+
+**A short-lived read checks `record_owner[]` but does not modify it.** It
+acquires and releases its F_RDLCK within one command. An update or acquired
+transfer keeps its write lock across commands, so it must store the owning
+client fd. For a transfer, both entries store the **sender's fd**, even though
+the receiver supplies the final decision. Receiver registration alone does not own a record; a failed transfer setup
+creates no ownership or pairing.
+
+A successful add or a balance-range error must not clear ownership. During
+cleanup, clear an ownership entry only if it belongs to the client or
+operation being cleaned up. Transfer cleanup initiated by the receiver must
+resolve its paired sender and release only that transfer's records. A failed
+lock attempt must never clear or unlock another client's record. A normal
+read releases only its own temporary read lock and leaves record_owner unchanged.
+
+Example:
+
+```text
+Client A (fd 5): update 902001
+    record_owner[0] = 5
+
+Client B (fd 6): read 902001
+    record_owner[0] belongs to fd 5
+    Return Locked without calling F_SETLK.
+
+Client B: read 902002
+    record_owner[1] == -1
+    Attempt F_RDLCK; if successful, read and release it.
+    record_owner[1] stays -1.
+```
+
+The last read can still encounter a lock held by a different server process.
+A free local owner entry does not guarantee that the kernel lock is available.
+
+- **Same server process:** `record_owner[]` distinguishes clients.
+- **Different server processes:** `fcntl()` record locks provide protection.
 
 Shared read locks held by different processes are compatible. A write lock
 conflicts with another process's read or write lock. Different records remain
-independent. Keep the original `record_fd` open for the server lifetime;
-opening/closing another fd for the same file can release this process's locks.
+independent. Keep the original `record_fd` open for the server lifetime.
+With traditional POSIX record locks, **closing any file descriptor in this
+process that refers to the same file may release this process's locks on that
+file**. Merely opening another descriptor does not release them. Do not open
+and close `accountRecord` separately for individual operations.
 
 Concurrency checks hold a client in WAIT_UPDATE. This makes lock conflicts
 repeatable without relying on two brief operations happening at the same time.
@@ -368,31 +466,30 @@ shows 515. Close does not stop draining the connection.
 discard all later commands in the batch. Retain earlier successful adds.
 If a later read line is incomplete, save it and let other clients run.
 
-For Task 4 integration, the supplied transfer timer provides
-`lock_retry_timeout(&timeout)` for select and `service_lock_waiters()` after a
-readable batch or timeout. Call `close_failed_clients(&master)` before select
+For Task 4 integration, call `close_failed_clients(&master)` before select
 and skip close_pending clients during processing. Failed-notification cleanup
 must not invalidate another peer while its handler is still executing.
 
-The timer sleeps through select; it does not spin. It retries transfer record
-locks every 50 ms using a monotonic deadline, so other incoming socket traffic
-cannot indefinitely reset the retry deadline. Under the test load, a pending
-transfer should progress within 2 seconds once the records remain available.
-No FIFO or cross-process fairness guarantee is required.
+There is no timer or lock-retry callback to integrate. Use a NULL timeout in
+select; socket activity wakes the loop. Lock acquisition attempts use F_SETLK
+and return immediately on conflict. Waiting for a receiver's decision is
+ordinary per-client state, so the server continues serving other connections.
 
 Task 3 includes concurrent clients, same-server ownership, fragmented input,
 and one send containing multiple complete commands plus an incomplete tail.
 EOF/error paths must also remove the socket and release any owned records.
 
-## 8. TODO 4 / Public Task 4 — Confirmed Transfer with Deferred Locks
+## 8. TODO 4 / Public Task 4 — Confirmed Transfer with Immediate Lock Failure
 
 B registers to receive; A requests a transfer; B accepts before money moves.
 Both participants connect to the same server. Other servers share the same
 record file and may temporarily hold the records this transfer needs.
 
-**Transfer-only waiting:** a transfer encountering a local or cross-server write-lock
-conflict waits and retries. It must not immediately fail with `Locked`.
-Only after both locks are acquired may it read, validate, and offer the transfer.
+**Immediate lock failure:** if either record is owned by another local client
+or either F_SETLK write-lock attempt conflicts, release any acquired lock and
+reply `Locked` to the sender. Do not queue, wait, or automatically retry.
+Only after both locks are acquired may the server read, validate, and offer
+the transfer. Waiting for acceptance begins only after that successful setup.
 
 ### 8.1 Registration
 
@@ -405,7 +502,7 @@ Waiting for transfer; enter cancel or exit:
 
 B enters WAIT_RECEIVE. This takes no record lock, and other operations on the
 account remain possible. Each account has at most one registered receiver per
-server, including a receiver reserved by a queued transfer or an active offer.
+server, including a receiver participating in an active offer.
 A duplicate registration replies:
 
 ```c
@@ -441,18 +538,19 @@ Apply these checks in order:
 2. Find a different registered client in WAIT_RECEIVE on this server. If none
    is available, reply `>>> [Error] Receiver unavailable.\n` plus READY prompt.
 3. Attempt the source write lock, then the target write lock, checking both
-   local ownership entries before the syscalls. If either conflicts, enter
-   the paired lock wait below. **Release any first lock before waiting.**
+   local ownership entries before the syscalls. If either conflicts,
+   **release any first lock and immediately reply Locked to A**. Follow the
+   failed-setup rules below; do not create a pair or notify B.
 4. After both locks are held, read both balances and require source balance
    at least amount and target balance plus amount at most MAX_BALANCE. Use
    wide arithmetic. Never cache the balances before acquisition.
 5. If valid, create an offer and keep both locks through the decision.
 
-No failed acquisition attempt may leave either record owned by the waiter.
-Do not hold the first lock while waiting for the second. This rule applies to
-every retry as well as the initial attempt. Unrelated records remain usable.
+No failed acquisition attempt may leave either record owned by this request.
+If the second lock fails, release the first before returning. Never release a
+lock owned by another operation. Unrelated records remain usable.
 
-If the initial acquisition succeeds but the balances are invalid, release both
+If both acquisitions succeed but the balances are invalid, release both
 locks and reply **only to A**:
 
 ```c
@@ -461,40 +559,36 @@ locks and reply **only to A**:
 
 A stays READY, B remains WAIT_RECEIVE, and B receives no notification.
 
-### 8.3 Paired lock wait
+### 8.3 Lock conflict: fail this request without pairing
 
-If acquisition conflicts, reserve B for this request. A enters
-WAIT_TRANSFER_LOCK; B enters WAIT_TRANSFER_PEER. Send once to A:
+On a local-owner conflict or an F_SETLK conflict (`EACCES`/`EAGAIN`), send
+**only to A**:
 
-```text
->>> Waiting for transfer locks.
-Waiting for locks; enter cancel or exit: 
+```c
+">>> Locked.\nPlease enter your command: "
 ```
 
-Send once to B, using the actual IDs and amount:
+This is a recoverable operation error, not an invalid-command error:
 
-```text
->>> Transfer queued: 902001 -> 902002, amount: 100
-Waiting for sender locks; enter reject or exit: 
-```
+- A stays READY and its TCP connection remains open.
+- Release every lock acquired by this attempt, including the source lock if
+  acquiring the target failed. Do not modify either balance.
+- Clear temporary transfer fields on A. Do not create or retain a pending pair.
+- B remains WAIT_RECEIVE with its registration intact and receives no message.
+  B can still cancel its registration or be matched by another valid request.
+- Releasing the conflicting lock later does **not** trigger any notification,
+  offer, or transfer. A client must explicitly send a new `transfer` command.
+- A new request performs validation and lock acquisition again, and reads
+  current balances only after acquiring both locks.
 
-There is no READY prompt and no balance modification. At most one transfer can
-reserve a given receiver. Another sender targeting that receiver gets
-`Receiver unavailable`, rather than joining the same offer.
+For example, another server holds an update lock on the target account.
+A's transfer immediately replies Locked, leaving B registered. When that
+updater later sends close, nothing automatically happens to A or B. A can
+choose to send a new transfer request; only this new request may create an offer.
 
-Retry through the supplied timer integrated in Task 3. Do not repeatedly notify clients
-on each failed attempt. There are no held record locks between failed attempts,
-so other clients may still use an otherwise available source/target account.
-When retry succeeds, read **both latest balances** and validate again.
-
-- Valid: send the normal offer notifications below and keep both locks.
-- Invalid: release the two locks, remove registration, reset both clients to
-  READY, and send `Balance out of range` plus READY prompt to **both**. Unlike
-  immediate validation failure, this ends an already paired request.
-
-A may `cancel`; B may `reject`; either may `exit` or disconnect while waiting.
-Use the same paired cleanup and messages as an active offer. B cannot `accept`
-before receiving an offer: that command in WAIT_TRANSFER_PEER is invalid.
+There are no WAIT_TRANSFER_LOCK / WAIT_TRANSFER_PEER states, retry timers,
+or a two-second server-side waiting requirement. Do not use F_SETLKW or loop
+until a lock becomes available.
 
 ### 8.4 Offer and confirmation
 
@@ -512,8 +606,7 @@ B enters WAIT_TRANSFER_IN and receives:
 Please enter accept or reject: 
 ```
 
-An immediately available transfer sends only these notifications. A queued
-transfer sends these after its earlier waiting notifications. Cross-socket
+A successful setup sends these notifications directly. Cross-socket
 notification order is not graded, but order within each socket is fixed.
 
 **Do not write yet.** During WAIT_TRANSFER_OUT/IN, both records are owned by
@@ -539,7 +632,7 @@ List source first even if its ID is numerically larger. An unrelated or repeated
 
 ### 8.5 Paired cancellation and disconnection
 
-These rules cover both a lock-waiting pair and an acquired offer:
+These rules apply to an acquired offer. A failed setup has no pair to cancel:
 
 | Action | Response to each still-connected participant | Balance change |
 |---|---|---|
@@ -557,15 +650,16 @@ Please enter your command:
 ```
 
 EOF, partial-command disconnection, input errors, and failed notifications also
-run paired cleanup. Release only locks actually acquired by this pair; a queued
-waiter must never unlock another client's records. Reset both participants and
+run paired cleanup. Release only locks actually acquired by this pair; cleanup
+must never unlock another client's records. Reset both participants and
 remove the registration so a reused fd cannot inherit an old request.
 
 Use the supplied close_pending/deferred-close infrastructure when notifying a
 peer fails. Clear paired state before sending terminal notifications so cleanup
 cannot recursively cancel the same offer twice.
 
-After any offer or paired wait ends, B must register again for another transfer.
+After an acquired offer ends, B must register again for another transfer.
+A setup failure preserves B's existing registration, as described above.
 A terminal action is processed in event-loop order. If acceptance completes
 before EOF is detected, it is not undone. No special priority between truly
 simultaneous cancel/accept requests is required.
@@ -575,8 +669,6 @@ simultaneous cancel/accept requests is required.
 | State | Accepted commands | Held records |
 |---|---|---|
 | WAIT_RECEIVE | cancel, exit | None |
-| WAIT_TRANSFER_LOCK (A) | cancel, exit | None between attempts |
-| WAIT_TRANSFER_PEER (B) | reject, exit | None |
 | WAIT_TRANSFER_OUT (A) | cancel, exit | Both write-locked, locally owned by A |
 | WAIT_TRANSFER_IN (B) | accept, reject, exit | Owned by the paired sender |
 
@@ -587,8 +679,8 @@ wait for their notifications. Do not pipeline `receive` with `accept`, or an
 ### 8.7 Scope and grading cases
 
 The record format stays unchanged. The starter provides the extra states,
-receiver table, request storage, parsers, dispatcher, timer and deferred-close
-infrastructure. The acquisition/retry/state/cleanup logic is student work.
+receiver table, request storage, parsers, dispatcher and deferred-close
+infrastructure. The acquisition/state/cleanup logic is student work.
 
 No transfer-confirmation timeout or global fairness guarantee is required.
 Both participants must use the same server; only record conflicts cross
@@ -600,11 +692,12 @@ writes, journaling, and recovery are outside scope. Responsive clients and
 small replies are assumed; full nonblocking output queues are not required.
 
 Public cases cover acceptance, rejection/cancellation, either participant's
-disconnection, exact nonadjacent record ranges, deferred transfer until an
-updater sends close, and balance revalidation after the wait. They verify that
-successful adds retain the updater's lock, so transfer cannot proceed until
-that session closes or disconnects. Other tests may combine documented
-waiting, batching, invalid commands, connection reuse, and independent pairs.
+disconnection, exact nonadjacent record ranges, immediate Locked replies for
+local/remote source/target conflicts, rollback of partial acquisitions, and
+receiver-registration preservation. Tests also check that releasing a lock
+does not resume a failed request; a new request uses the latest balances.
+Other tests may combine batching, invalid commands, connection reuse, and
+independent pairs.
 
 ---
 
@@ -630,8 +723,37 @@ EOF may occur while receiving a partial command. Discard that partial input,
 release any acquired update/transfer locks, clear matching ownership and
 registration, notify a paired survivor when applicable, close the fd, and
 reset the request. Cleanup may be invoked through multiple paths and must be
-safe when no lock was acquired. A queued transfer must not unlock the client
-that is currently preventing its acquisition.
+safe when no lock was acquired. A failed transfer attempt must not unlock the client
+that caused the conflict.
+
+### 9.1 Failed response writes
+
+A `send_text()` failure is treated as a **failed client connection**. Stop
+sending to that client, clean up its active operation, remove the socket from
+the monitored set, and close the connection. Do not try to send another error
+message or prompt to a connection whose send has already failed.
+
+- For WAIT_UPDATE, release its record lock and matching local owner, clear the
+  session, and close the socket. Preserve every successful add already written.
+- For WAIT_RECEIVE, remove its receiver registration and close the socket.
+- For an active transfer pair, release the pair's two locks, clear matching
+  owners/registration and paired state, close the failed connection, and
+  notify the still-connected peer with the normal peer-disconnected response.
+- A failed setup that never created an offer has no paired peer to notify.
+  Likewise, if a transfer already completed or ended before a response fails,
+  do not undo it or send a second cancellation for an operation that has ended.
+
+Use deferred-close handling when an immediate reset could invalidate a
+request currently being processed. In the supplied structure, a handler can
+return false for its current client so the event loop closes it after the
+handler returns. When sending to another client fails, mark that client's
+`close_pending` flag and let the supplied cleanup sweep close it safely.
+Do not continue dispatching commands for a client marked close_pending.
+
+If notifying the surviving peer also fails, mark that connection for cleanup
+as well. Clear the pair before sending cleanup notifications so the same
+transfer cannot be recursively canceled twice. Failure of a welcome message
+or its initial prompt also closes the newly accepted connection.
 
 ## 10. Public Checker and Grading
 
@@ -654,7 +776,7 @@ Public checker results are feedback, not the full weighted final grade.
 | 1 | 1 | Basic commands, immediate and repeated adds, close/exit, no rollback |
 | 2 | 3 | Exact fcntl lock ranges/types, local ownership, lock lifetime and cleanup |
 | 3 | 1 | select, per-client state/buffers, fragments and multiple commands |
-| 4 | 2 | Receiver matching, two-record protection, deferred transfer and cleanup |
+| 4 | 2 | Receiver matching, two-record protection, immediate conflict and cleanup |
 | **Total** | **7** | |
 
 Hidden tests may combine documented behaviors, dynamic balances, boundaries,
@@ -708,15 +830,18 @@ the session's account to competing updates until close or connection cleanup.
 No. update immediately replies Locked if it cannot acquire the record.
 An already held session continues until its client closes it or disconnects.
 
-**Does a waiting transfer stop the server?**
-No. F_SETLK attempts return immediately. If either lock conflicts, release any
-partial acquisition, save the pair's waiting state, and return to select.
-The provided timer schedules another attempt. select waits for socket events
-or its timeout; it does not directly notify you of file-lock release.
+**What happens when a transfer cannot acquire its locks?**
+It immediately replies Locked to the sender, releases any partial acquisition,
+and leaves the receiver registered. There is no lock wait or automatic retry.
+A client must send a new transfer request if it wants to try again.
+
+**Does waiting for accept/reject stop the server?**
+No. After a successful offer, keep both record locks and per-client state,
+then return to select. Other clients continue to use unrelated records.
 
 **When are balances read for a transfer?**
-Only after both locks have been acquired, including after a wait. An updater
-may have performed several adds before close; use the latest resulting values.
+Only after both locks succeed. Every new transfer request reads the current
+balances; never reuse values from an earlier failed request.
 
 **Can the two transfer clients connect to different servers?**
 No. Receiver matching is local. Other servers participate only through shared

@@ -190,7 +190,6 @@ PEER_GONE = b">>> Transfer canceled: peer disconnected.\n" + READY_PROMPT
 
 CLOSED = b">>> Update closed.\n" + READY_PROMPT
 RANGE = b">>> [Error] Balance out of range.\n" + UPDATE_PROMPT
-TRANSFER_WAIT = b">>> Waiting for transfer locks.\nWaiting for locks; enter cancel or exit: "
 
 def receiving(account_id: int) -> bytes:
     return f">>> Ready to receive on account {account_id}.\n".encode() + RECEIVE_PROMPT
@@ -321,15 +320,12 @@ def test_transfer_exact_ranges() -> None:
         assert_balances(DEFAULT_BALANCES)
 
 
-def queued(source=902001, target=902002, amount=100):
-    return (f">>> Transfer queued: {source} -> {target}, amount: {amount}\n".encode()
-            + b"Waiting for sender locks; enter reject or exit: ")
 
 
 def assert_quiet(client, duration=0.20):
-    """After a waiting notice, there must be no premature acquired/offer reply."""
+    """Check that a failed setup causes no unsolicited offer or retry response."""
     if client.buffer:
-        raise JudgeError(f"premature output while waiting: {client.buffer!r}")
+        raise JudgeError(f"unexpected unsolicited output: {client.buffer!r}")
     previous = client.sock.gettimeout()
     client.sock.settimeout(duration)
     try:
@@ -522,52 +518,65 @@ def probe_external_free(account):
             except OSError as exc:
                 if exc.errno not in (errno.EACCES, errno.EAGAIN): raise
                 if time.monotonic() >= deadline:
-                    raise JudgeError("partial transfer lock was retained between attempts")
+                    raise JudgeError("failed transfer leaked a partial record lock")
                 time.sleep(0.01)
         fcntl.lockf(f, fcntl.LOCK_UN, 8, offset)
 
 
-def test_transfer_deferred():
-    with transfer_world() as (a, b, local, remote):
-        remote.command("update 902002", update_started(902002, 1200))
-        b.command("receive 902002", receiving(902002))
-        a.command("transfer 902001 902002 100", TRANSFER_WAIT)
-        b.expect(queued())
-        assert_quiet(a)
-        probe_external_free(902001)
-        probe_free(local, 902001, 500)  # partial source lock released
-        remote.command("add 50", update_succeeded(902002, 1250))
-        assert_quiet(a)  # add persisted but lock still held until close
-        remote.command("close", CLOSED)
-        a.expect(b">>> Transfer requested.\n" + TRANSFER_PROMPT)
-        b.expect(offer(902001, 902002, 100))
-        remote.command("update 902001", LOCKED)  # no blocking update mode
-        b.command("accept", completed(902001, 902002, 400, 1350))
-        a.expect(completed(902001, 902002, 400, 1350))
-        probe_free(remote, 902002, 1350)
-        expected = DEFAULT_BALANCES.copy(); expected[0], expected[1] = 400, 1350
-        assert_balances(expected)
+def test_transfer_conflict_returns_locked():
+    for same_server in [True, False]:
+        for locked_account in [902001, 902002]:
+            with transfer_world() as (a, b, local, remote):
+                owner = local if same_server else remote
+                before = 500 if locked_account == 902001 else 1200
+                owner.command(f"update {locked_account}", update_started(locked_account, before))
+                b.command("receive 902002", receiving(902002))
+                a.command("transfer 902001 902002 100", LOCKED)
+                # No offer or queued message, and no leaked partial source lock.
+                assert_quiet(b)
+                if locked_account == 902002:
+                    probe_external_free(902001)
+                a.command("read 902003", read_reply(902003, 0))  # still READY
+                owner.command("add 50", update_succeeded(locked_account, before + 50))
+                a.command("transfer 902001 902002 100", LOCKED)  # add retains lock
+                owner.command("close", CLOSED)
+                # Unlocking does NOT resume the old failed request automatically.
+                assert_quiet(a); assert_quiet(b)
+                a.command("read 902001", read_reply(902001, 550 if locked_account == 902001 else 500))
+                # Receiver registration remains, but sender must send a NEW request.
+                a.command("transfer 902001 902002 100", b">>> Transfer requested.\n" + TRANSFER_PROMPT)
+                b.expect(offer(902001, 902002, 100))
+                src, dst = ((450, 1300) if locked_account == 902001 else (400, 1350))
+                b.command("accept", completed(902001, 902002, src, dst))
+                a.expect(completed(902001, 902002, src, dst))
+                expected = DEFAULT_BALANCES.copy(); expected[0], expected[1] = src, dst
+                assert_balances(expected)
+                probe_free(remote, 902001, src); probe_free(local, 902002, dst)
 
 
-def test_transfer_deferred_range():
+def test_transfer_new_request_checks_latest_balance():
     with transfer_world() as (a, b, local, remote):
         remote.command("update 902004", update_started(902004, 999999))
         b.command("receive 902004", receiving(902004))
-        a.command("transfer 902001 902004 1", TRANSFER_WAIT)
-        b.expect(queued(902001, 902004, 1))
+        a.command("transfer 902001 902004 1", LOCKED)
+        probe_external_free(902001)
         remote.command("add 1", update_succeeded(902004, 1000000))
         remote.command("close", CLOSED)
-        rejected = b">>> [Error] Balance out of range.\n" + READY_PROMPT
-        a.expect(rejected); b.expect(rejected)
-        probe_free(local, 902001, 500)
-        probe_free(remote, 902004, 1000000)
-        a.command("transfer 902001 902004 1", b">>> [Error] Receiver unavailable.\n" + READY_PROMPT)
+        assert_quiet(a); assert_quiet(b)
+        a.command("transfer 902001 902004 1", b">>> [Error] Balance out of range.\n" + READY_PROMPT)
+        assert_quiet(b)  # failed setup still does not consume the receiver
+        probe_free(local, 902001, 500); probe_free(remote, 902004, 1000000)
+        b.command("cancel", b">>> Receive canceled.\n" + READY_PROMPT)
+
+
+
+
 
 
 def task_4():
     run_cases([test_transfer_accept, test_transfer_reject_cancel,
                test_transfer_disconnect, test_transfer_exact_ranges,
-               test_transfer_deferred, test_transfer_deferred_range])
+               test_transfer_conflict_returns_locked, test_transfer_new_request_checks_latest_balance])
 
 
 TASKS: dict[str, Callable[[], None]] = {"1": task_1, "2": task_2, "3": task_3, "4": task_4}
