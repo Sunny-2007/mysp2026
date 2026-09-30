@@ -1,7 +1,20 @@
 # SP2026 HW1 — csieLedger
 
 Revision 2026-09-29: four TODOs, total **7 points**.
-Full student protocol: [SPEC.md](SPEC.md). Changes: [CHANGELOG.md](CHANGELOG.md).
+## Latest assignment specification
+
+**Read the latest assignment specification on HackMD:**
+
+[SP2026 HW1 — Assignment Specification](https://hackmd.io/9LiX65KYRPC6uxadugACkQ?both)
+
+The complete assignment requirements, command protocol, exact responses, grading
+criteria, and FAQ are maintained on HackMD. This README is a quick-start guide;
+always refer to HackMD for the latest specification and clarifications.
+
+A separate `SPEC.md` is no longer maintained in this repository. If you are
+looking for `SPEC.md`, use the HackMD link above.
+
+Changes: [CHANGELOG.md](CHANGELOG.md).
 
 | TODO | Work | Points |
 |---|---|---:|
@@ -28,6 +41,9 @@ Complete send_text first; it sends the initial welcome message. The provided
 sequential loop supports developing Tasks 1–2. Implement select for Tasks 3–4.
 There is no stage3 driver or special build. The starter compiles but does not
 pass until its TODOs are implemented.
+
+TAs will use additional hidden tests for grading. Passing all public tests does
+not guarantee full credit.
 
 The checker temporarily rewrites/restores accountRecord. Do not run other
 checkers or manual servers against this directory while a checker runs.
@@ -76,10 +92,21 @@ owned records. Unrelated accounts remain usable.
 Socket setup, parsing, record I/O, input buffers, dispatch,
 and deferred close infrastructure are provided. Students implement handlers,
 lock/state ownership and cleanup, drain_commands, and select integration.
-Exact messages, invalid-input rules, and transfer states are in SPEC.
+Exact messages, invalid-input rules, and transfer states are in the
+[HackMD specification](https://hackmd.io/9LiX65KYRPC6uxadugACkQ?both).
 
 ## Submission
 
 Submit `<student_id>_hw1.zip` to NTU COOL with server.c, server.h, Makefile,
 and any required extra C/header files. Exclude binaries, tests, accountRecord,
 and TA material. GitHub Issues is for Q&A; Classroom is not required.
+
+## Questions and updates
+
+Read the FAQ in HackMD and search existing issues before posting a question.
+Please use [GitHub Issues](https://github.com/ntusp2026/SP2026_HW1_release/issues)
+for assignment questions so students and TAs from both classes can share
+clarifications. Do not publish your solution code in issues.
+
+Check HackMD and GitHub Issues regularly for updates.
+
