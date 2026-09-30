@@ -93,7 +93,7 @@ Socket setup, parsing, record I/O, input buffers, dispatch,
 and deferred close infrastructure are provided. Students implement handlers,
 lock/state ownership and cleanup, drain_commands, and select integration.
 Exact messages, invalid-input rules, and transfer states are in the
-[HackMD specification](https://hackmd.io/9LiX65KYRPC6uxadugACkQ?both).
+[HackMD specification](https://hackmd.io/9LiX65KYRPC6uxadugACkQ).
 
 ## Submission
 
