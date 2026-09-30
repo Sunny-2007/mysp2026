@@ -5,7 +5,7 @@ Revision 2026-09-29: four TODOs, total **7 points**.
 
 **Read the latest assignment specification on HackMD:**
 
-[SP2026 HW1 — Assignment Specification](https://hackmd.io/9LiX65KYRPC6uxadugACkQ?both)
+[SP2026 HW1 — Assignment Specification](https://hackmd.io/@ntusp2026/Bk_CwOfczx)
 
 The complete assignment requirements, command protocol, exact responses, grading
 criteria, and FAQ are maintained on HackMD. This README is a quick-start guide;
