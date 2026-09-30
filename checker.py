@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Public testcase judge for SP2026 HW1: csieLedger (four-TODO version)."""
+"""Public feedback for SP2026 HW1 (7 points).
+
+Public passes are NOT awarded grades. TAs use additional hidden cases and
+code review. Run --task 1 2 to check selected tasks; omitted tasks are NOT RUN.
+"""
 
 from __future__ import annotations
 
@@ -420,8 +424,7 @@ def test_update_exit_invalid():
 
 
 def task_1():
-    run_cases([test_update_session, test_update_exit_invalid])
-
+    run_cases(TASK_CASES["1"])
 
 def test_remote_session_lock():
     write_records(DEFAULT_BALANCES)
@@ -475,8 +478,7 @@ def test_shared_read_lock():
 
 
 def task_2():
-    run_cases([test_remote_session_lock, test_shared_read_lock])
-
+    run_cases(TASK_CASES["2"])
 
 def test_batch_and_fragment():
     write_records(DEFAULT_BALANCES)
@@ -495,16 +497,17 @@ def test_batch_and_fragment():
         c = Client(server.port); stack.callback(c.close)
         c.command("read 902002", read_reply(902002, 1200))
         b.sock.sendall(b"te 902001\n"); b.expect(update_started(902001, 515))
-        c.command("update 902001", LOCKED)
+        # Test multiplexing on an independent record. Ownership belongs to
+        # Task 2's private cases, which require the Task 3 event loop.
+        c.command("read 902002", read_reply(902002, 1200))
         b.command("add 10", update_succeeded(902001, 525))
-        c.command("read 902001", LOCKED)
+        c.command("read 902002", read_reply(902002, 1200))
         b.command("close", CLOSED)
         c.command("read 902001", read_reply(902001, 525))
 
 
 def task_3():
-    run_cases([test_batch_and_fragment])
-
+    run_cases(TASK_CASES["3"])
 
 def probe_external_free(account):
     # Independent process: local ownership alone cannot detect a leaked fcntl lock.
@@ -574,37 +577,100 @@ def test_transfer_new_request_checks_latest_balance():
 
 
 def task_4():
-    run_cases([test_transfer_accept, test_transfer_reject_cancel,
-               test_transfer_disconnect, test_transfer_exact_ranges,
-               test_transfer_conflict_returns_locked, test_transfer_new_request_checks_latest_balance])
+    run_cases(TASK_CASES["4"])
 
-
+TASK_CASES = {
+    "1": [test_update_session, test_update_exit_invalid],
+    "2": [test_remote_session_lock, test_shared_read_lock],
+    "3": [test_batch_and_fragment],
+    "4": [test_transfer_accept, test_transfer_reject_cancel,
+          test_transfer_disconnect, test_transfer_exact_ranges,
+          test_transfer_conflict_returns_locked,
+          test_transfer_new_request_checks_latest_balance],
+}
 TASKS: dict[str, Callable[[], None]] = {"1": task_1, "2": task_2, "3": task_3, "4": task_4}
 POINTS = {"1": 1, "2": 3, "3": 1, "4": 2}
+TASK_NAMES = {
+    "1": "Commands and update sessions",
+    "2": "Record locks and local ownership",
+    "3": "Multiplexing and input buffering",
+    "4": "Confirmed transfers and cleanup",
+}
+TEST_ERRORS = (JudgeError, OSError, struct.error)
+
+
+def add_task_argument(parser):
+    parser.add_argument("-t", "--task", nargs="+", choices=TASK_CASES,
+                        default=list(TASK_CASES), metavar="{1,2,3,4}",
+                        help="tasks to run (default: all); repeated IDs run once")
+
+
+def selected_tasks(args):
+    # Canonical ordering also prevents repeated selectors from inflating scores.
+    return [task for task in TASK_CASES if task in args.task]
+
+
+def run_task_suite(selected, cases_by_task, label):
+    """Continue after failed cases/tasks; return case outcomes for each task."""
+    results = {}
+    for task in selected:
+        print(f"\n[{label}] Task {task}: {TASK_NAMES[task]} ({POINTS[task]} points)", flush=True)
+        outcomes = []
+        for check in cases_by_task[task]:
+            try:
+                check()
+            except TEST_ERRORS as exc:
+                outcomes.append(False)
+                print(f"  [FAIL] {check.__name__}: {exc}", flush=True)
+            else:
+                outcomes.append(True)
+                print(f"  [PASS] {check.__name__}", flush=True)
+        results[task] = outcomes
+        state = "PASS" if outcomes and all(outcomes) else "FAIL"
+        print(f"[{state}] {label} Task {task}: {sum(outcomes)}/{len(outcomes)} cases", flush=True)
+    return results
+
+
+def task_passed(results, task):
+    return task in results and bool(results[task]) and all(results[task])
+
+
+def result_cell(results, task):
+    if task not in results:
+        return "NOT RUN"
+    values = results[task]
+    state = "PASS" if task_passed(results, task) else "FAIL"
+    return f"{state} {sum(values)}/{len(values)}"
+
+
+def print_public_summary(results):
+    print("\nPUBLIC SUMMARY (feedback only; NOT a final grade)")
+    print(f"{'Task':<7}{'Public cases':<20}{'Public-only estimate':<23}")
+    for task in TASK_CASES:
+        score = f"{POINTS[task] if task_passed(results, task) else 0}/{POINTS[task]}" if task in results else "--"
+        print(f"{task:<7}{result_cell(results, task):<20}{score:<23}")
+    earned = sum(POINTS[t] for t in results if task_passed(results, t))
+    possible = sum(POINTS[t] for t in results)
+    print(f"Public-only estimate for selected tasks: {earned}/{possible}; full assignment: 7 points.")
+    print("Each estimate uses all-or-nothing per task, NOT per-case partial credit.")
+    print("TAs will grade with ADDITIONAL HIDDEN TESTS and code review.")
+    print("Passing public tests does NOT guarantee the corresponding points.")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-t", "--task", nargs="+", choices=TASKS, default=list(TASKS))
+    add_task_argument(parser)
     args = parser.parse_args()
-    if not RECORD_PATH.is_file():
-        print("[ERROR] accountRecord is missing", file=sys.stderr)
-        return 1
+    if not RECORD_PATH.is_file() or not SERVER_PATH.is_file():
+        print("[ERROR] server or accountRecord is missing. Run make first.", file=sys.stderr)
+        return 2
     original = RECORD_PATH.read_bytes()
-    failed = 0
     try:
-        for name in args.task:
-            try:
-                TASKS[name]()
-            except (JudgeError, OSError, struct.error) as exc:
-                failed += 1
-                print(f"[FAIL] Task {name}: {exc}")
-            else:
-                print(f"[PASS] Task {name} (allocation: {POINTS[name]} points)")
+        results = run_task_suite(selected_tasks(args), TASK_CASES, "PUBLIC")
     finally:
         RECORD_PATH.write_bytes(original)
-    print(f"Passed {len(args.task)-failed}/{len(args.task)} public tasks. Final grading includes private cases and code review.")
-    return int(failed != 0)
+    print_public_summary(results)
+    return int(any(not task_passed(results, t) for t in results))
 
 
 if __name__ == "__main__":
