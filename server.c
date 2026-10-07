@@ -133,6 +133,7 @@ static void release_update(request *req) {
      * TODO 1: Reset the update-related fields to their READY values.
      * Preserve the connection and input buffer. Repeated cleanup must be safe.
      */
+    
 
     (void)req;
 }
@@ -272,16 +273,35 @@ static bool handle_ready(request *req, const char *line) {
     (void)req; (void)line;
     (void)ready_prompt; (void)update_prompt;
     (void)parse_account_command; (void)read_record_at; (void)set_record_lock;
-    int idx;
+    int idx = 0;
     if (parse_account_command(line, "read", &idx)) {
-
+        account_record rec;
+        set_record_lock(idx, F_RDLCK);
+        read_record_at(idx, &rec);
+        set_record_lock(idx, F_UNLCK);
+        req->account_index = idx;
+        char msg[MAX_MSG_LEN];
+        snprintf(msg, sizeof(msg), ">>> Account %d balance: %d\nPlease enter your command: ", idx + ACCOUNT_ID_START, rec.balance);
+        send_text(req->conn_fd, msg);
         return true;
-    } else if (parse_account_command(line, "read", &idx)){
-
+    } else if (parse_account_command(line, "update", &idx)){
+        account_record rec;
+        set_record_lock(idx, F_RDLCK);
+        read_record_at(idx, &rec);
+        set_record_lock(idx, F_UNLCK);
+        req->account_index = idx;
+        char msg[MAX_MSG_LEN];
+        snprintf(msg, sizeof(msg), ">>> Account %d balance: %d\n>>> Update lock acquired.\nPlease enter add <delta> or close: ", idx + ACCOUNT_ID_START, rec.balance);
+        send_text(req->conn_fd, msg);
+        req->state = WAIT_UPDATE;
         return true;
     } else if (strcmp(line, "exit") == 0) {
-        
-        return true;
+        send_text(req->conn_fd, ">>> Client exit.\n");
+        return false;
+    }
+    else {
+        send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
+        return false;
     }
     return false;
 }
@@ -297,6 +317,44 @@ static bool handle_wait_update(request *req, const char *line) {
      */
     (void)req; (void)line;
     (void)parse_delta_command; (void)write_record_at;
+    int idx = req->account_index;
+    account_record rec;
+    set_record_lock(idx, F_RDLCK);
+    read_record_at(idx, &rec);
+    set_record_lock(idx, F_UNLCK);
+    account_record newrec = rec;
+    int delta;
+    char msg[MAX_MSG_LEN];
+    if(parse_delta_command(line, &delta)) {  
+        newrec.balance = rec.balance + delta;
+        if(newrec.balance >= 0 && newrec.balance <= 1000000) {
+            set_record_lock(idx, F_WRLCK);
+            write_record_at(idx, &newrec);
+            set_record_lock(idx, F_UNLCK);
+            snprintf(msg, sizeof(msg), ">>> Update successful.\n>>> Account %d balance: %d\nPlease enter add <delta> or close: ", idx + ACCOUNT_ID_START, newrec.balance);    
+            send_text(req->conn_fd, msg);     
+            return true;   
+        }
+        else {
+            snprintf(msg, sizeof(msg), ">>> [Error] Balance out of range.\nPlease enter add <delta> or close: ");
+            send_text(req->conn_fd, msg); 
+            return true;
+        }
+    } 
+    else if(strcmp(line, "close") == 0) {
+        snprintf(msg, sizeof(msg),  ">>> Update closed.\nPlease enter your command: ");
+        send_text(req->conn_fd, msg);    
+        req->state = READY;    
+        return true;
+    }
+    else if(strcmp(line, "exit") == 0) {
+        send_text(req->conn_fd, ">>> Client exit.\n");
+        return false;       
+    }
+    else {
+        send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
+        return false;
+    }
     return false;
 }
 
