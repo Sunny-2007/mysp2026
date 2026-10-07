@@ -44,9 +44,26 @@ static int send_text(int fd, const char *text) {
      *
      * This is also used for the welcome message, so complete it first.
      */
+
     (void)fd;
     (void)text;
-    return -1;
+    size_t cur = 0;
+    size_t count = strlen(text);
+    while(cur < count) {
+        ssize_t n = write(fd, text+cur, count - cur);
+        if (n < 0) {
+            if(errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        else if (n == 0) {
+            break;
+        }
+        cur += n;
+    }
+    if(count == cur) return 0;
+    else return -1;
 }
 
 static void init_request(request *req) {
@@ -58,7 +75,7 @@ static void init_request(request *req) {
     req->account_index = -1;
 }
 
-int append_input(request *req) {
+int append_input(request *req) { //讀資料
     if (req->buf_len >= sizeof(req->buf)) {
         return INPUT_ERROR;
     }
@@ -77,7 +94,7 @@ int append_input(request *req) {
     return INPUT_DATA;
 }
 
-int pop_command(request *req, char *out, size_t out_size) {
+int pop_command(request *req, char *out, size_t out_size) { 
     char *newline = memchr(req->buf, '\n', req->buf_len);
     if (newline == NULL) {
         return 0;
@@ -116,6 +133,7 @@ static void release_update(request *req) {
      * TODO 1: Reset the update-related fields to their READY values.
      * Preserve the connection and input buffer. Repeated cleanup must be safe.
      */
+
     (void)req;
 }
 
@@ -254,6 +272,17 @@ static bool handle_ready(request *req, const char *line) {
     (void)req; (void)line;
     (void)ready_prompt; (void)update_prompt;
     (void)parse_account_command; (void)read_record_at; (void)set_record_lock;
+    int idx;
+    if (parse_account_command(line, "read", &idx)) {
+
+        return true;
+    } else if (parse_account_command(line, "read", &idx)){
+
+        return true;
+    } else if (strcmp(line, "exit") == 0) {
+        
+        return true;
+    }
     return false;
 }
 
