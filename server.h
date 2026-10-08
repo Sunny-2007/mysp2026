@@ -62,9 +62,9 @@ typedef struct {
     char buf[MAX_MSG_LEN];
     size_t buf_len;
 
-    enum client_state state;
-    int account_index;
-    int current_balance;
+    enum client_state state; //READY, /WAIT_UPDATE...
+    int account_index; //持有的account
+    int current_balance; //持有的account現在的balance
 
     /* TODO 4 storage. Pending transfer values live on the sender request. */
     int peer_fd;              /* -1 when unpaired */

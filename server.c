@@ -122,20 +122,32 @@ static int set_record_lock(int index, short type) {
      */
     (void)index;
     (void)type;
-    return 0;
+    struct flock fl;
+    memset(&fl, 0, sizeof(fl));
+    fl.l_type   = type;                                  // F_RDLCK / F_WRLCK / F_UNLCK
+    fl.l_whence = SEEK_SET;                              // 從檔案開頭算
+    fl.l_start  = (off_t)index * sizeof(account_record); // 第 index 筆的位置
+    fl.l_len    = sizeof(account_record);                // 只鎖一筆（8 bytes）
+    return fcntl(record_fd, F_SETLK, &fl);
 }
 
 static void release_update(request *req) {
     if (req->state != WAIT_UPDATE) return;
     /* TODO 2: Release this request's update lock and matching local owner. */
-
+    if (record_owner[req->account_index] == req->conn_fd) {
+        record_owner[req->account_index] = -1;
+        set_record_lock(req->account_index, F_UNLCK);
+    }
     /*
      * TODO 1: Reset the update-related fields to their READY values.
      * Preserve the connection and input buffer. Repeated cleanup must be safe.
      */
-    
 
+    req->state = READY;
+    req->account_index = -1;
+    req->current_balance = 0;
     (void)req;
+    return;
 }
 
 static void close_client(int fd, fd_set *master) {
@@ -276,25 +288,55 @@ static bool handle_ready(request *req, const char *line) {
     int idx = 0;
     if (parse_account_command(line, "read", &idx)) {
         account_record rec;
-        set_record_lock(idx, F_RDLCK);
-        read_record_at(idx, &rec);
+        if (record_owner[idx] != -1) {
+           send_text(req->conn_fd, ">>> Locked.\nPlease enter your command: ");
+           return true;
+        }
+
+        if(set_record_lock(idx, F_RDLCK)< 0) { 
+            if (errno == EAGAIN || errno == EACCES){
+                send_text(req->conn_fd, ">>> Locked.\nPlease enter your command: ");
+                return true;
+            }
+            return false;
+        }
+
+        if(read_record_at(idx, &rec)== -1) {
+            set_record_lock(idx, F_UNLCK);
+            return false;
+        }
         set_record_lock(idx, F_UNLCK);
-        req->account_index = idx;
         char msg[MAX_MSG_LEN];
         snprintf(msg, sizeof(msg), ">>> Account %d balance: %d\nPlease enter your command: ", idx + ACCOUNT_ID_START, rec.balance);
         send_text(req->conn_fd, msg);
         return true;
+
     } else if (parse_account_command(line, "update", &idx)){
         account_record rec;
-        set_record_lock(idx, F_RDLCK);
-        read_record_at(idx, &rec);
-        set_record_lock(idx, F_UNLCK);
+        if (record_owner[idx] != -1) {
+           send_text(req->conn_fd, ">>> Locked.\nPlease enter your command: ");
+           return true;
+        }
+        if(set_record_lock(idx, F_WRLCK)< 0) { 
+            if (errno == EAGAIN || errno == EACCES){
+                send_text(req->conn_fd, ">>> Locked.\nPlease enter your command: ");
+                return true;
+            }
+            return false;
+        }
+        int ret = read_record_at(idx, &rec);
+        if(ret == -1) {
+            set_record_lock(idx, F_UNLCK);
+            return false;
+        } 
+        req->current_balance = rec.balance;    
+        record_owner[idx] = req->conn_fd;
         req->account_index = idx;
         char msg[MAX_MSG_LEN];
-        snprintf(msg, sizeof(msg), ">>> Account %d balance: %d\n>>> Update lock acquired.\nPlease enter add <delta> or close: ", idx + ACCOUNT_ID_START, rec.balance);
+        snprintf(msg, sizeof(msg), ">>> Account %d balance: %d\n>>> Update lock acquired.\nPlease enter add <delta> or close: ", idx + ACCOUNT_ID_START, req->current_balance);
         send_text(req->conn_fd, msg);
         req->state = WAIT_UPDATE;
-        return true;
+        return true;      
     } else if (strcmp(line, "exit") == 0) {
         send_text(req->conn_fd, ">>> Client exit.\n");
         return false;
@@ -318,20 +360,18 @@ static bool handle_wait_update(request *req, const char *line) {
     (void)req; (void)line;
     (void)parse_delta_command; (void)write_record_at;
     int idx = req->account_index;
-    account_record rec;
-    set_record_lock(idx, F_RDLCK);
-    read_record_at(idx, &rec);
-    set_record_lock(idx, F_UNLCK);
-    account_record newrec = rec;
+ 
     int delta;
     char msg[MAX_MSG_LEN];
-    if(parse_delta_command(line, &delta)) {  
-        newrec.balance = rec.balance + delta;
-        if(newrec.balance >= 0 && newrec.balance <= 1000000) {
-            set_record_lock(idx, F_WRLCK);
-            write_record_at(idx, &newrec);
-            set_record_lock(idx, F_UNLCK);
-            snprintf(msg, sizeof(msg), ">>> Update successful.\n>>> Account %d balance: %d\nPlease enter add <delta> or close: ", idx + ACCOUNT_ID_START, newrec.balance);    
+    if(parse_delta_command(line, &delta)) {  //add <amount>
+        long long nb = (long long)req->current_balance + delta;
+        if(nb >= 0 && nb <= MAX_BALANCE) {   
+            account_record newrec;
+            newrec.balance = nb;
+            newrec.id = idx + ACCOUNT_ID_START;
+            if (write_record_at(idx, &newrec) < 0) return false;   // 先寫檔  
+            req->current_balance = nb;                
+            snprintf(msg, sizeof(msg), ">>> Update successful.\n>>> Account %d balance: %d\nPlease enter add <delta> or close: ", idx + ACCOUNT_ID_START, req->current_balance);    
             send_text(req->conn_fd, msg);     
             return true;   
         }
@@ -341,17 +381,17 @@ static bool handle_wait_update(request *req, const char *line) {
             return true;
         }
     } 
-    else if(strcmp(line, "close") == 0) {
+    else if(strcmp(line, "close") == 0) { //close
         snprintf(msg, sizeof(msg),  ">>> Update closed.\nPlease enter your command: ");
-        send_text(req->conn_fd, msg);    
-        req->state = READY;    
+        send_text(req->conn_fd, msg);     
+        release_update(req);
         return true;
     }
-    else if(strcmp(line, "exit") == 0) {
+    else if(strcmp(line, "exit") == 0) { //exit
         send_text(req->conn_fd, ">>> Client exit.\n");
         return false;       
     }
-    else {
+    else { //invalid
         send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
         return false;
     }
