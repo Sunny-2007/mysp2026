@@ -69,3 +69,48 @@ close            ← 要知道要解哪個帳號的鎖
 - 不需要，用區域變數就好（例如 read 讀到的 `rec`）
 
 所以 read 不該設定 `account_index`：read 做完之後沒有後續指令需要它，而 READY 狀態的約定是 `account_index == -1`。
+
+## listen fd 與 client fd
+
+| | listen fd | client fd |
+|---|---|---|
+| 數量 | 整個 server **只有一個** | **每個 client 一個** |
+| 在哪建立 | `init_server` 裡的 `socket` → `bind` → `listen` | 每次 `accept` 回傳一個新的 |
+| 用途 | **只用來接受新連線** | **和那個 client 收發資料**（`read`、`write`） |
+| 存在哪 | `svr.listen_fd` | `requestP[fd].conn_fd` |
+| select 說它可讀，代表 | 有新的 client 在排隊等連線 | 這個 client 送資料來了，或斷線了 |
+
+比喻：listen fd 是餐廳門口的**帶位員**，只負責迎接新客人；client fd 是**每一桌**，點餐上菜都在這桌進行。
+
+```c
+// init_server：建立 listen fd（只做一次）
+svr.listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+bind(svr.listen_fd, ...);      // 綁定 port
+listen(svr.listen_fd, 1024);   // 開始接受連線，1024 是排隊上限
+
+// serve_clients：每次 accept 產生一個 client fd
+int fd = accept(svr.listen_fd, ...);   // 從 listen fd 取出一個新連線
+requestP[fd].conn_fd = fd;             // 之後用這個 fd 和這個 client 溝通
+```
+
+- 不要對 listen fd 呼叫 `read` 或 `write`，它沒有連到任何 client
+- select 時兩種都要放進 `master`：listen fd 用來知道有新連線，client fd 用來知道誰送了指令
+
+### 為什麼 listen fd「可讀」代表有新連線
+
+select 的「可讀」真正的意思是：**對這個 fd 做對應的讀取操作，不會卡住**。
+
+- client fd 對應的讀取操作是 `read`，所以「可讀」代表 buffer 裡有資料（或對方斷線，`read` 會馬上回傳 0）
+- listen fd 不能 `read`，它對應的操作是 `accept`，所以「可讀」代表 **`accept` 會馬上回傳**
+
+而 `accept` 什麼時候會馬上回傳？要看 kernel 怎麼處理連線：
+
+1. client 呼叫 `connect`，**kernel 自動**和它完成 TCP 三次握手，不需要 server 程式參與
+2. 握手完成的連線，被 kernel 放進這個 listen socket 的 **accept 佇列**（排隊上限就是 `listen` 的第二個參數）
+3. server 呼叫 `accept`，從佇列取出一個連線，回傳新的 client fd
+
+所以：
+- 佇列是空的：`accept` 會卡住等待，select 不會把 listen fd 標成可讀
+- 佇列裡有連線：`accept` 會馬上回傳，select 會把 listen fd 標成可讀
+
+這也解釋了舊程式的現象：A 還在線上時 B 連進來，B 的握手已經由 kernel 完成、排在佇列裡了，但程式卡在 `read(A)`，沒有人呼叫 `accept`，所以 B 收不到歡迎訊息。
