@@ -616,7 +616,6 @@ static bool handle_wait_transfer(request *req, const char *line) {
             return false;
         }
         send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
-        cleanup_transfer(req);
         return false;
     }
     if(req->state == WAIT_TRANSFER_OUT) {
