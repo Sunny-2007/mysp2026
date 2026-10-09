@@ -26,6 +26,7 @@ static const char *update_prompt =
 static const char *receive_prompt = "Waiting for transfer; enter cancel or exit: ";
 static const char *transfer_prompt = "Waiting for receiver; enter cancel or exit: ";
 static const char *accept_prompt = "Please enter accept or reject: ";
+static const char *exit_prompt = ">>> Client exit.\n";
 
 static void cleanup_transfer(request *req);
 
@@ -339,7 +340,7 @@ static bool handle_ready(request *req, const char *line) {
         req->state = WAIT_UPDATE;
         return true;      
     } else if (strcmp(line, "exit") == 0) {
-        send_text(req->conn_fd, ">>> Client exit.\n");
+        send_text(req->conn_fd, exit_prompt);
         return false;
     }
     else {
@@ -377,25 +378,20 @@ static bool handle_wait_update(request *req, const char *line) {
             return true;   
         }
         else {
-            snprintf(msg, sizeof(msg), ">>> [Error] Balance out of range.\nPlease enter add <delta> or close: ");
-            send_text(req->conn_fd, msg); 
+            send_text(req->conn_fd, ">>> [Error] Balance out of range.\nPlease enter add <delta> or close: "); 
             return true;
         }
     } 
     else if(strcmp(line, "close") == 0) { //close
-        snprintf(msg, sizeof(msg),  ">>> Update closed.\nPlease enter your command: ");
-        send_text(req->conn_fd, msg);     
+        send_text(req->conn_fd, ">>> Update closed.\nPlease enter your command: ");     
         release_update(req);
         return true;
     }
     else if(strcmp(line, "exit") == 0) { //exit
-        send_text(req->conn_fd, ">>> Client exit.\n");
+        send_text(req->conn_fd, exit_prompt);
         return false;       
     }
-    else { //invalid
-        send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
-        return false;
-    }
+    send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
     return false;
 }
 
@@ -406,12 +402,57 @@ static bool handle_wait_update(request *req, const char *line) {
  * Set peer.close_pending if a peer notification fails; do not close a peer
  * inside a command handler. The supplied sweep handles those failures.
  */
+
+// 解lock、清 owner、register 雙方都設回 READY。
+static void finish_transfer(request *sender) {
+    request *receiver = &requestP[sender->peer_fd];
+    set_record_lock(sender->account_index, F_UNLCK);
+    set_record_lock(receiver->target_index, F_UNLCK);
+    receiver_fd[receiver->target_index] = -1;
+    record_owner[sender->account_index] = -1;
+    record_owner[sender->target_index] = -1;
+    sender->state = READY;
+    receiver->state = READY;
+    sender->peer_fd = -1;
+    sender->target_balance = 0;
+    sender->target_index = -1;
+    sender->account_index = -1;
+    sender->amount = 0;
+    sender->current_balance = 0;
+    receiver->amount = 0;
+    receiver->current_balance = 0;
+    receiver->peer_fd = -1;
+    receiver->target_index = -1;
+    return;
+}
+
 static void cleanup_transfer(request *req) {
     /* TODO 4: Remove registration, release only this transfer's locks,
      * reset both participants and notify the surviving peer on disconnect.
      * No-op for READY/WAIT_UPDATE. Never commit during cleanup.
      */
     (void)req;
+    if(req->state == READY || req->state == WAIT_UPDATE) return;
+    if(req->state == WAIT_RECEIVE) {
+        receiver_fd[req->target_index] = -1;
+        req->target_index = -1;
+        req->state = READY;
+        return;
+    }
+    int survivor = req->peer_fd;
+    if(req->state == WAIT_TRANSFER_IN) {
+        request *snd = &requestP[req->peer_fd];
+        finish_transfer(snd);       
+    }
+    else { //WAIT_TRANSFER_OUT
+        finish_transfer(req);
+    }   
+    if(send_text(survivor, ">>> Transfer canceled: peer disconnected.\n")) {
+        requestP[survivor].close_pending = true;
+        return;
+    }
+    send_text(survivor, ready_prompt);
+    return;
 }
 
 static bool handle_transfer_ready(request *req, const char *line) {
@@ -426,7 +467,110 @@ static bool handle_transfer_ready(request *req, const char *line) {
     (void)req; (void)line;
     (void)parse_transfer_command;
     (void)receive_prompt; (void)transfer_prompt; (void)accept_prompt;
-    return false;
+    int source, target, amount;
+    char msg[MAX_MSG_LEN];
+    if(parse_transfer_command(line, &source, &target, &amount)) {
+        int rfd = receiver_fd[target];
+        if(rfd == -1 || requestP[rfd].state != WAIT_RECEIVE) {
+            send_text(req->conn_fd, ">>> [Error] Receiver unavailable.\n");
+            send_text(req->conn_fd, ready_prompt);
+            return true;
+        }
+        if(record_owner[source] != -1 || record_owner[target] != -1) { //有其中一個fd locked by peers, return 
+            send_text(req->conn_fd, ">>> Locked.\n");
+            send_text(req->conn_fd, ready_prompt);   
+            return true;
+        }
+        if(set_record_lock(source, F_WRLCK)< 0) { 
+            if (errno == EAGAIN || errno == EACCES){
+                send_text(req->conn_fd, ">>> Locked.\nPlease enter your command: ");
+                return true;
+            }
+            return false;
+        }    
+        if(set_record_lock(target, F_WRLCK)< 0) {
+            set_record_lock(source, F_UNLCK);
+            if (errno == EAGAIN || errno == EACCES){
+                send_text(req->conn_fd, ">>> Locked.\nPlease enter your command: ");
+                return true;
+            }
+            return false;
+        }
+
+        account_record source_rec, target_rec;
+        if(read_record_at(target, &target_rec) == -1){
+            set_record_lock(target, F_UNLCK);
+            set_record_lock(source, F_UNLCK);
+            return false;
+        }
+        if(read_record_at(source, &source_rec) == -1){
+            set_record_lock(target, F_UNLCK);
+            set_record_lock(source, F_UNLCK);
+            return false;
+        }
+        long long target_nb = amount + (long long) target_rec.balance;
+        long long source_nb = (long long) source_rec.balance - (long long) amount;
+        if(target_nb > MAX_BALANCE || source_nb < 0) {
+            send_text(req->conn_fd, ">>> [Error] Balance out of range.\n");
+            send_text(req->conn_fd, ready_prompt);
+            set_record_lock(source, F_UNLCK);
+            set_record_lock(target, F_UNLCK);
+
+            return true;
+        }
+        //record_owner 都記在 sender 這邊
+        record_owner[source] = req->conn_fd;
+        record_owner[target] = req->conn_fd;
+        //index, balance, amount 也是
+        req->peer_fd = receiver_fd[target];
+        req->account_index = source;
+        req->target_index = target; 
+        req->target_balance = target_rec.balance;
+        req->current_balance = source_rec.balance;
+        req->amount = amount;
+        req->state = WAIT_TRANSFER_OUT;
+
+        int target_fd = receiver_fd[target]; 
+        request *rcv = &requestP[target_fd]; // rcv is target request
+
+        rcv->peer_fd = req->conn_fd;
+        req->peer_fd = rcv->conn_fd;
+        rcv->state = WAIT_TRANSFER_IN;
+        send_text(req->conn_fd, ">>> Transfer requested.\n");
+        send_text(req->conn_fd, transfer_prompt);
+        snprintf(msg, sizeof(msg), ">>> Transfer offer: %d -> %d, amount: %d\n", source + ACCOUNT_ID_START, target + ACCOUNT_ID_START, amount);
+        if(send_text(req->peer_fd, msg) < 0) {
+            requestP[req->peer_fd].close_pending = true; 
+            return true;
+        }
+        send_text(req->peer_fd, accept_prompt);
+        return true;
+
+    }else if(parse_account_command(line, "receive", &target)) {
+        if(receiver_fd[target] != -1) {
+            send_text(req->conn_fd,">>> [Error] Receiver already registered.\n");
+            send_text(req->conn_fd,ready_prompt);
+            return true;
+        }
+        receiver_fd[target] = req->conn_fd;
+        req->target_index = target;
+        req->state = WAIT_RECEIVE;
+        snprintf(msg, sizeof(msg), ">>> Ready to receive on account %d.\nWaiting for transfer; enter cancel or exit: ", target + ACCOUNT_ID_START);
+        send_text(req->conn_fd, msg);
+        return true;
+    }
+    else if(strcmp(line, "cancel") == 0) {
+        send_text(req->conn_fd, ">>> Receive canceled.\nPlease enter your command: ");
+        req->state = READY;
+        return true;
+    }
+    else if(strcmp(line, "exit") == 0) { //exit
+        send_text(req->conn_fd, ">>> Client exit.\n");
+        return false;       
+    }
+    send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
+    return false; 
+
 }
 
 static bool handle_wait_transfer(request *req, const char *line) {
@@ -436,7 +580,81 @@ static bool handle_wait_transfer(request *req, const char *line) {
      * Complete/cancel/reject must release both locks and registration.
      */
     (void)line;
-    (void)send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
+    char msg[MAX_MSG_LEN];
+    if(req->state == WAIT_TRANSFER_IN) {
+        if(strcmp(line, "accept") == 0) {
+            account_record source_rec, target_rec;
+            request *snd = &requestP[req->peer_fd];
+            read_record_at(snd->target_index, &target_rec);
+            read_record_at(snd->account_index, &source_rec);
+            target_rec.balance += snd->amount;
+            source_rec.balance -= snd->amount;
+            write_record_at(snd->target_index, &target_rec);
+            write_record_at(snd->account_index, &source_rec);
+            snprintf(msg, sizeof(msg), ">>> Transfer completed.\n>>> Account %d balance: %d\n>>> Account %d balance: %d\n%s", snd->target_index + ACCOUNT_ID_START, target_rec.balance, snd->account_index + ACCOUNT_ID_START, source_rec.balance, ready_prompt);
+
+            if(send_text(snd->conn_fd, msg) < 0) {
+                snd->close_pending = true;
+            }
+            send_text(req->conn_fd, msg);
+            snd->state = READY;
+            req->state = READY;
+            finish_transfer(snd);
+            return true;
+        }
+        if(strcmp(line, "reject") == 0) {
+            send_text(req->conn_fd, ">>> Transfer rejected.\n"); 
+            send_text(req->peer_fd, ">>> Transfer rejected.\n");     
+            send_text(req->conn_fd, ready_prompt);     
+            send_text(req->peer_fd, ready_prompt);
+            finish_transfer(&requestP[req->peer_fd]);
+            return true;
+        }
+        if(strcmp(line, "exit") == 0) {
+            send_text(req->conn_fd, exit_prompt);
+            cleanup_transfer(req);
+            return false;
+        }
+        send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
+        cleanup_transfer(req);
+        return false;
+    }
+    if(req->state == WAIT_TRANSFER_OUT) {
+        if(strcmp(line, "cancel") == 0) {
+            send_text(req->conn_fd, ">>> Transfer canceled.\n");  
+            send_text(req->peer_fd, ">>> Transfer canceled.\n");   
+                   
+            send_text(req->conn_fd, ready_prompt);
+            send_text(req->peer_fd, ready_prompt);
+            finish_transfer(req);
+            return true;
+        }
+        if(strcmp(line, "exit") == 0) {
+            send_text(req->conn_fd, ">>> Client exit.\n");
+            cleanup_transfer(req);
+            return false;
+        }
+        send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
+        cleanup_transfer(req);
+        return false;
+    }
+    if(req->state == WAIT_RECEIVE) {
+        if(strcmp(line, "cancel") == 0) {
+            send_text(req->conn_fd, ">>> Receive canceled.\nPlease enter your command: ");
+            req->state = READY;
+            receiver_fd[req->target_index] = -1;
+            req->target_index = -1;
+            return true;
+        }
+        else if(strcmp(line, "exit") == 0) { //exit
+            cleanup_transfer(req);
+            send_text(req->conn_fd, ">>> Client exit.\n");
+            return false;       
+        }
+        cleanup_transfer(req);
+        send_text(req->conn_fd, ">>> [Error] Invalid command.\n");
+        return false;
+    }
     return false;
 }
 
