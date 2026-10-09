@@ -591,7 +591,7 @@ static bool handle_wait_transfer(request *req, const char *line) {
             source_rec.balance -= snd->amount;
             write_record_at(snd->target_index, &target_rec);
             write_record_at(snd->account_index, &source_rec);
-            snprintf(msg, sizeof(msg), ">>> Transfer completed.\n>>> Account %d balance: %d\n>>> Account %d balance: %d\n%s", snd->target_index + ACCOUNT_ID_START, target_rec.balance, snd->account_index + ACCOUNT_ID_START, source_rec.balance, ready_prompt);
+            snprintf(msg, sizeof(msg), ">>> Transfer completed.\n>>> Account %d balance: %d\n>>> Account %d balance: %d\n%s", snd->account_index + ACCOUNT_ID_START, source_rec.balance, snd->target_index + ACCOUNT_ID_START, target_rec.balance, ready_prompt);
 
             if(send_text(snd->conn_fd, msg) < 0) {
                 snd->close_pending = true;
