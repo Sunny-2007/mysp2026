@@ -1,0 +1,31 @@
+store a 1
+store b 2
+store c 3
+fetch 1 a
+delete b
+fetch 2 a
+fetch 3 c
+delete c
+fetch 4 a
+delete a
+delete a
+delete nope
+store a again
+fetch 5 a
+store ab long
+fetch 6 a
+fetch 7 ab
+delete a
+fetch 8 ab
+store A upper
+fetch 9 A
+store x 1
+store x 2
+delete x
+store x 3
+fetch a x
+store s  two  spaces  
+fetch b s
+store s new
+fetch c s
+kill

@@ -1,6 +1,6 @@
 # Your NTU student ID, e.g. b12902033. Set it here once, or pass it as
 # `make submission STUDENT_ID=b12902033`.
-STUDENT_ID =
+STUDENT_ID = b14902067
 
 # The files you submit besides this Makefile, which is always included. List
 # every source and header that sp is built from.
@@ -9,7 +9,7 @@ SUBMISSION_FILES = sp.c sp.h
 # Build sp. Change this rule and `clean` as you like, for example to compile
 # more sources or add flags.
 sp: sp.c sp.h
-	gcc -o sp sp.c
+	gcc -Wall -Wextra -g -o sp sp.c
 
 .PHONY: clean
 clean:

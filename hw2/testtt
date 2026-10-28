@@ -1,0 +1,2 @@
+clang -g -fsanitize=address,undefined -o sp_asan sp.c
+./sp_asan < mytests/store_delete.txt | diff - mytests/store_delete.expected && echo PASS

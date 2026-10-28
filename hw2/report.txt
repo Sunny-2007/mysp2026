@@ -1,0 +1,21 @@
+gcc -Wall -Wextra -g -o sp sp.c
+sp.c: In function 'main':
+sp.c:296:15: warning: unused variable 'command_buffer' [-Wunused-variable]
+  296 |         char *command_buffer = NULL;
+      |               ^~~~~~~~~~~~~~
+sp.c:295:17: warning: unused variable 'command' [-Wunused-variable]
+  295 |         Command command;
+      |                 ^~~~~~~
+sp.c: In function 'create_handler':
+sp.c:438:27: error: incompatible types when assigning to type 'enum <anonymous>' from type 'char *'
+  438 |         conns[idx].role = "child";
+      |                           ^~~~~~~
+sp.c: In function 'kill_handler':
+sp.c:517:27: warning: unused parameter 'cmd' [-Wunused-parameter]
+  517 | int kill_handler(Command *cmd) {
+      |                  ~~~~~~~~~^~~
+sp.c: In function 'update_handler':
+sp.c:522:29: warning: unused parameter 'cmd' [-Wunused-parameter]
+  522 | int update_handler(Command *cmd) {
+      |                    ~~~~~~~~~^~~
+make: *** [sp] Error 1
