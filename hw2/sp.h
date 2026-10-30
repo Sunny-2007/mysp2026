@@ -21,27 +21,43 @@ typedef struct entry {
     struct entry* next;
 } Entry;
 
+typedef struct {
+    enum { FROM_JUDGE, FROM_CHILD } type;
+    int slot;
+}Origin;
+
 
 typedef struct {
     char *buf;
     size_t len;
-    enum { CREATE, STORE, DELETE, FETCH, KILL, UPDATE, UNKNOWN } type;
+    enum { CREATE, STORE, DELETE, FETCH, KILL, UPDATE, UNKNOWN, QUERY, ANSWER } type;
     char *arg1;
     size_t arg1_len;
     char *arg2;
     size_t arg2_len;
-} Command;
+    int src_slot;   // 這行從哪個 child 來；不是 child pipe 就 -1
+}Command;
+
+typedef struct consultant{
+    char* hash;
+    size_t hash_len;
+    char* key;
+    size_t key_len;
+    Origin origin;
+    pid_t pid;
+    int done;
+}Consultant;
 
 typedef struct {
     int    fd;
-    pid_t  pid;
     char*  buf;
     size_t len; //buf 裡目前有幾個 byte
     size_t cap; //size of buf
     size_t start; //next start
     size_t scanned; //have scanned
-    enum {COMMAND, PARENT_PIPE, CHILD_PIPE, CONSULT} role;
-    int child_slot;
+    enum {COMMAND, PARENT_PIPE, CHILD_PIPE, CONSULT} role; //從哪邊讀取
+    int child_slot; //這個連線在 child table 的 index 是什麼
+    Consultant* consult;
 }Conn;
 
 typedef struct {
@@ -51,12 +67,16 @@ typedef struct {
     int   read_fd; //child to parent
 }Child;
 
-typedef struct {
+
+
+typedef struct pending{
     char* hash;
-    char* origin; //pending 是從 child 還是 judge 來
-    int slot; //還給哪個child
-    char* key; //要詢問的key
+    size_t hash_len;
+    Origin origin; //要還給誰
+    // char* key; //要詢問的key
+    struct pending* next;
 }Pending;
+
 
 enum input_status {
     INPUT_ERROR = -1,
@@ -64,22 +84,37 @@ enum input_status {
     INPUT_DATA = 1,
     INPUT_RETRY = 2
 };
+int conn_read(Conn* c);
 void conn_init(Conn* c, int fd);
 void conn_free(Conn* c);
 int parse_command(char *line, size_t len, Command *cmd);
+int parse_protocal(char *line, size_t len, Command *cmd);
 int command_handler(Command *cmd);
 int create_handler(Command *cmd);
 int store_handler(Command *cmd);
 int delete_handler(Command *cmd);
 int fetch_handler(Command *cmd);
-int kill_handler(Command *cmd);
+int query_handler(Command *cmd);
+int answer_handler(Command *cmd);
 int update_handler(Command *cmd);
+
 int drain_lines(Conn* c);
-int add_fd(int fd, short events);
+int drain_consultant(Conn* c);
+
+
+int add_fd(int fd, short events, int role);
 int remove_fd(int i);
+
 int set_cloexec(int fd);
+
 void shutdown_node(void);
+
 void free_entry(Entry* ent);
 Entry* new_entry(char* key, size_t key_len, char* value, size_t value_len);
 int write_all(int fd, const char* ptr, size_t len);
+int lookup(Command *cmd, Origin* origin);
+int deliver(Origin* origin, char* hash, size_t hash_len, char* value, size_t value_len);
+int pending_add(const char *hash, size_t hash_len, Origin *ori);
+int pending_take(const char *hash, size_t hash_len, Origin *out);
+int start_consultant(Consultant* consult);
 #endif // SP_H

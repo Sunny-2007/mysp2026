@@ -1,21 +1,578 @@
-gcc -Wall -Wextra -g -o sp sp.c
-sp.c: In function 'main':
-sp.c:296:15: warning: unused variable 'command_buffer' [-Wunused-variable]
-  296 |         char *command_buffer = NULL;
-      |               ^~~~~~~~~~~~~~
-sp.c:295:17: warning: unused variable 'command' [-Wunused-variable]
-  295 |         Command command;
-      |                 ^~~~~~~
-sp.c: In function 'create_handler':
-sp.c:438:27: error: incompatible types when assigning to type 'enum <anonymous>' from type 'char *'
-  438 |         conns[idx].role = "child";
-      |                           ^~~~~~~
-sp.c: In function 'kill_handler':
-sp.c:517:27: warning: unused parameter 'cmd' [-Wunused-parameter]
-  517 | int kill_handler(Command *cmd) {
-      |                  ~~~~~~~~~^~~
-sp.c: In function 'update_handler':
-sp.c:522:29: warning: unused parameter 'cmd' [-Wunused-parameter]
-  522 | int update_handler(Command *cmd) {
-      |                    ~~~~~~~~~^~~
-make: *** [sp] Error 1
+Public test score: 100.00 / 100.00 (100.00%)
+Build: succeeded
+Build log: "gcc -Wall -Wextra -g -o sp sp.c\nsp.c: In function 'main':\nsp.c:82:15: warning: unused variable 'command_buffer' [-Wunused-variable]\n   82 |         char *command_buffer = NULL;\n      |               ^~~~~~~~~~~~~~\nsp.c:81:17: warning: unused variable 'command' [-Wunused-variable]\n   81 |         Command command;\n      |                 ^~~~~~~\nsp.c: In function 'kill_handler':\nsp.c:331:27: warning: unused parameter 'cmd' [-Wunused-parameter]\n  331 | int kill_handler(Command *cmd) {\n      |                  ~~~~~~~~~^~~\nsp.c: In function 'lookup':\nsp.c:379:9: warning: unused variable 'find' [-Wunused-variable]\n  379 |     int find = 0;\n      |         ^~~~\nsp.c: In function 'drain_consultant':\nsp.c:597:17: warning: variable 'cmd' set but not used [-Wunused-but-set-variable=]\n  597 |         Command cmd;\n      |                 ^~~\n"
+Build log truncated: false
+Plan: "Public tests" (version "2")
+
+Group "single_node": 7.00 / 7.00 (100.00%)
+  Subgroup "One node" ("cases"): 7.00 / 7.00 (100.00%)
+    Test 0: passed; 1.40 / 1.40 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":1,"open_fds":3,"memory_bytes":32768,"cpu_seconds":1}
+          Step 1: store main color blue
+          Step 2: fetch main color
+            fetch: {"hash":"546515dcf1de7e32","expected":{"text":"blue","bytes":4},"received":{"text":"blue","bytes":4}}
+          Step 3: wait
+          Step 4: kill main
+    Test 1: passed; 1.40 / 1.40 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":1,"open_fds":3,"memory_bytes":770048,"cpu_seconds":1}
+          Step 1: store main k first
+          Step 2: store main k second
+          Step 3: fetch main k
+            fetch: {"hash":"9b4c23696120a871","expected":{"text":"second","bytes":6},"received":{"text":"second","bytes":6}}
+          Step 4: wait
+          Step 5: kill main
+    Test 2: passed; 1.40 / 1.40 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":1,"open_fds":3,"memory_bytes":114688,"cpu_seconds":1}
+          Step 1: store main k old
+          Step 2: delete main k
+          Step 3: store main k new
+          Step 4: fetch main k
+            fetch: {"hash":"5f49a257c25457dd","expected":{"text":"new","bytes":3},"received":{"text":"new","bytes":3}}
+          Step 5: wait
+          Step 6: kill main
+    Test 3: passed; 1.40 / 1.40 (100.00%); 2/2 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":1,"open_fds":3,"memory_bytes":688128,"cpu_seconds":1}
+          Step 1: store main greeting  hello,  world  
+          Step 2: fetch main greeting
+            fetch: {"hash":"26cf4cc52c45c94b","expected":{"text":" hello,  world  ","bytes":16},"received":{"text":" hello,  world  ","bytes":16}}
+          Step 3: store main path /a b/c
+          Step 4: fetch main path
+            fetch: {"hash":"1336a9b7fd4ad9b5","expected":{"text":"/a b/c","bytes":6},"received":{"text":"/a b/c","bytes":6}}
+          Step 5: wait
+          Step 6: kill main
+        Run 2: passed
+          peak: {"processes":1,"open_fds":3,"memory_bytes":737280,"cpu_seconds":1}
+          Step 1: store main greeting  hello,  world  
+          Step 2: fetch main greeting
+            fetch: {"hash":"c16ecdc7c8cfb89c","expected":{"text":" hello,  world  ","bytes":16},"received":{"text":" hello,  world  ","bytes":16}}
+          Step 3: store main path /a b/c
+          Step 4: fetch main path
+            fetch: {"hash":"1cc75eb3212a6f20","expected":{"text":"/a b/c","bytes":6},"received":{"text":"/a b/c","bytes":6}}
+          Step 5: wait
+          Step 6: kill main
+    Test 4: passed; 1.40 / 1.40 (100.00%); 3/3 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":1,"open_fds":3,"memory_bytes":688128,"cpu_seconds":1}
+          Step 1: store main a 1
+          Step 2: store main b 2
+          Step 3: store main c 3
+          Step 4: fetch main c
+            fetch: {"hash":"0c240a89b57a97a8","expected":{"text":"3","bytes":1},"received":{"text":"3","bytes":1}}
+          Step 5: fetch main a
+            fetch: {"hash":"8f603bf28a37cdc7","expected":{"text":"1","bytes":1},"received":{"text":"1","bytes":1}}
+          Step 6: fetch main b
+            fetch: {"hash":"c2bfe84e15314f83","expected":{"text":"2","bytes":1},"received":{"text":"2","bytes":1}}
+          Step 7: fetch main a
+            fetch: {"hash":"67f3fa193c468ace","expected":{"text":"1","bytes":1},"received":{"text":"1","bytes":1}}
+          Step 8: wait
+          Step 9: kill main
+        Run 2: passed
+          peak: {"processes":1,"open_fds":3,"memory_bytes":655360,"cpu_seconds":1}
+          Step 1: store main a 1
+          Step 2: store main b 2
+          Step 3: store main c 3
+          Step 4: fetch main c
+            fetch: {"hash":"04308923fab0c862","expected":{"text":"3","bytes":1},"received":{"text":"3","bytes":1}}
+          Step 5: fetch main a
+            fetch: {"hash":"6140a24cfec6a137","expected":{"text":"1","bytes":1},"received":{"text":"1","bytes":1}}
+          Step 6: fetch main b
+            fetch: {"hash":"a55887b48c866c66","expected":{"text":"2","bytes":1},"received":{"text":"2","bytes":1}}
+          Step 7: fetch main a
+            fetch: {"hash":"6c1ab91cf621d6df","expected":{"text":"1","bytes":1},"received":{"text":"1","bytes":1}}
+          Step 8: wait
+          Step 9: kill main
+        Run 3: passed
+          peak: {"processes":1,"open_fds":3,"memory_bytes":720896,"cpu_seconds":1}
+          Step 1: store main a 1
+          Step 2: store main b 2
+          Step 3: store main c 3
+          Step 4: fetch main c
+            fetch: {"hash":"6d98d94ed24ff185","expected":{"text":"3","bytes":1},"received":{"text":"3","bytes":1}}
+          Step 5: fetch main a
+            fetch: {"hash":"9801c539c371ccca","expected":{"text":"1","bytes":1},"received":{"text":"1","bytes":1}}
+          Step 6: fetch main b
+            fetch: {"hash":"3e45dd0f8632754c","expected":{"text":"2","bytes":1},"received":{"text":"2","bytes":1}}
+          Step 7: fetch main a
+            fetch: {"hash":"37c0434f14d373c7","expected":{"text":"1","bytes":1},"received":{"text":"1","bytes":1}}
+          Step 8: wait
+          Step 9: kill main
+
+Group "tree_lookups": 21.00 / 21.00 (100.00%)
+  Subgroup "Lookups through ancestors" ("cases"): 21.00 / 21.00 (100.00%)
+    Test 0: passed; 4.20 / 4.20 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":2,"open_fds":10,"memory_bytes":655360,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: store main k from-main
+          Step 3: fetch main k
+            fetch: {"hash":"8dd6685a5a82853f","expected":{"text":"from-main","bytes":9},"received":{"text":"from-main","bytes":9}}
+          Step 4: wait
+          Step 5: fetch a k
+            fetch: {"hash":"fee0cdab199afcc6","expected":{"text":"from-main","bytes":9},"received":{"text":"from-main","bytes":9}}
+          Step 6: wait
+          Step 7: kill main
+    Test 1: passed; 4.20 / 4.20 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":3,"open_fds":17,"memory_bytes":704512,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: create a b
+          Step 3: store main k root
+          Step 4: store a k middle
+          Step 5: fetch main k
+            fetch: {"hash":"bdb7911bbb8a86cc","expected":{"text":"root","bytes":4},"received":{"text":"root","bytes":4}}
+          Step 6: fetch a k
+            fetch: {"hash":"7df3fdbb024cdab7","expected":{"text":"middle","bytes":6},"received":{"text":"middle","bytes":6}}
+          Step 7: wait
+          Step 8: fetch b k
+            fetch: {"hash":"2a9d1d1a545105a5","expected":{"text":"middle","bytes":6},"received":{"text":"middle","bytes":6}}
+          Step 9: fetch a k
+            fetch: {"hash":"fe5a4066ccddeaff","expected":{"text":"middle","bytes":6},"received":{"text":"middle","bytes":6}}
+          Step 10: fetch main k
+            fetch: {"hash":"0be8f116cce3e80c","expected":{"text":"root","bytes":4},"received":{"text":"root","bytes":4}}
+          Step 11: wait
+          Step 12: kill main
+    Test 2: passed; 4.20 / 4.20 (100.00%); 2/2 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":3,"open_fds":17,"memory_bytes":671744,"cpu_seconds":1}
+          Step 1: create main left
+          Step 2: create main right
+          Step 3: store left k L
+          Step 4: store right k R
+          Step 5: fetch left k
+            fetch: {"hash":"868fb4f4dc590226","expected":{"text":"L","bytes":1},"received":{"text":"L","bytes":1}}
+          Step 6: fetch right k
+            fetch: {"hash":"be82efa042f37b4d","expected":{"text":"R","bytes":1},"received":{"text":"R","bytes":1}}
+          Step 7: wait
+          Step 8: kill main
+        Run 2: passed
+          peak: {"processes":3,"open_fds":17,"memory_bytes":704512,"cpu_seconds":1}
+          Step 1: create main left
+          Step 2: create main right
+          Step 3: store left k L
+          Step 4: store right k R
+          Step 5: fetch left k
+            fetch: {"hash":"143a0a54f9f1ed26","expected":{"text":"L","bytes":1},"received":{"text":"L","bytes":1}}
+          Step 6: fetch right k
+            fetch: {"hash":"5cf7647116ecd4c3","expected":{"text":"R","bytes":1},"received":{"text":"R","bytes":1}}
+          Step 7: wait
+          Step 8: kill main
+    Test 3: passed; 4.20 / 4.20 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":8,"open_fds":52,"memory_bytes":1392640,"cpu_seconds":1}
+          Step 1: create main n2
+          Step 2: create n2 n3
+          Step 3: create n3 n4
+          Step 4: create n4 n5
+          Step 5: create n5 n6
+          Step 6: create n6 n7
+          Step 7: create n7 n8
+          Step 8: store main deep top
+          Step 9: fetch main deep
+            fetch: {"hash":"4e1b80876d026734","expected":{"text":"top","bytes":3},"received":{"text":"top","bytes":3}}
+          Step 10: wait
+          Step 11: fetch n8 deep
+            fetch: {"hash":"923c15de0ae53eea","expected":{"text":"top","bytes":3},"received":{"text":"top","bytes":3}}
+          Step 12: fetch n5 deep
+            fetch: {"hash":"6410d8feddc1c91e","expected":{"text":"top","bytes":3},"received":{"text":"top","bytes":3}}
+          Step 13: wait
+          Step 14: kill main
+    Test 4: passed; 4.20 / 4.20 (100.00%); 3/3 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":6,"open_fds":38,"memory_bytes":1392640,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: create main b
+          Step 3: create a a1
+          Step 4: create a a2
+          Step 5: create b b1
+          Step 6: store main shared S
+          Step 7: store a only-a A
+          Step 8: fetch main shared
+            fetch: {"hash":"84bc220404473bcb","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 9: fetch a only-a
+            fetch: {"hash":"12a2473648338d92","expected":{"text":"A","bytes":1},"received":{"text":"A","bytes":1}}
+          Step 10: wait
+          Step 11: fetch a1 shared
+            fetch: {"hash":"50adcb8db28347c3","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 12: fetch a2 shared
+            fetch: {"hash":"845ca6af299f5f47","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 13: fetch b1 shared
+            fetch: {"hash":"1b47440acd33ff7c","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 14: fetch a1 only-a
+            fetch: {"hash":"8d2ffc50cf545e12","expected":{"text":"A","bytes":1},"received":{"text":"A","bytes":1}}
+          Step 15: fetch a2 only-a
+            fetch: {"hash":"ae50c296bef8ad5f","expected":{"text":"A","bytes":1},"received":{"text":"A","bytes":1}}
+          Step 16: wait
+          Step 17: kill main
+        Run 2: passed
+          peak: {"processes":6,"open_fds":38,"memory_bytes":1392640,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: create main b
+          Step 3: create a a1
+          Step 4: create a a2
+          Step 5: create b b1
+          Step 6: store main shared S
+          Step 7: store a only-a A
+          Step 8: fetch main shared
+            fetch: {"hash":"ded0b9ae2c23b63b","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 9: fetch a only-a
+            fetch: {"hash":"6bf59324ae7bafe7","expected":{"text":"A","bytes":1},"received":{"text":"A","bytes":1}}
+          Step 10: wait
+          Step 11: fetch a1 shared
+            fetch: {"hash":"d2dc0e50ce906e64","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 12: fetch a2 shared
+            fetch: {"hash":"e431699626aff846","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 13: fetch b1 shared
+            fetch: {"hash":"10ba2824a72066c2","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 14: fetch a1 only-a
+            fetch: {"hash":"29c6cf4d56ea883b","expected":{"text":"A","bytes":1},"received":{"text":"A","bytes":1}}
+          Step 15: fetch a2 only-a
+            fetch: {"hash":"ad815cd450d41c48","expected":{"text":"A","bytes":1},"received":{"text":"A","bytes":1}}
+          Step 16: wait
+          Step 17: kill main
+        Run 3: passed
+          peak: {"processes":6,"open_fds":38,"memory_bytes":1392640,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: create main b
+          Step 3: create a a1
+          Step 4: create a a2
+          Step 5: create b b1
+          Step 6: store main shared S
+          Step 7: store a only-a A
+          Step 8: fetch main shared
+            fetch: {"hash":"402fb1df178a5d06","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 9: fetch a only-a
+            fetch: {"hash":"7c63602ba7d0ee34","expected":{"text":"A","bytes":1},"received":{"text":"A","bytes":1}}
+          Step 10: wait
+          Step 11: fetch a1 shared
+            fetch: {"hash":"34bbb4c451522b46","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 12: fetch a2 shared
+            fetch: {"hash":"c25a3d2c113100f9","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 13: fetch b1 shared
+            fetch: {"hash":"2268b873b5c64869","expected":{"text":"S","bytes":1},"received":{"text":"S","bytes":1}}
+          Step 14: fetch a1 only-a
+            fetch: {"hash":"555506d67eafb413","expected":{"text":"A","bytes":1},"received":{"text":"A","bytes":1}}
+          Step 15: fetch a2 only-a
+            fetch: {"hash":"2230c4a8e0fef55a","expected":{"text":"A","bytes":1},"received":{"text":"A","bytes":1}}
+          Step 16: wait
+          Step 17: kill main
+
+Group "consultant": 29.00 / 29.00 (100.00%)
+  Subgroup "Consultant runs" ("cases"): 29.00 / 29.00 (100.00%)
+    Test 0: passed; 5.80 / 5.80 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":1,"open_fds":3,"memory_bytes":1392640,"cpu_seconds":1}
+          Step 1: fetch main unknown
+            fetch: {"hash":"af5181878b7cd91a","expected":{"text":"f30383a2fc0e6d36","bytes":16},"received":{"text":"f30383a2fc0e6d36","bytes":16}}
+          Step 2: wait
+          Step 3: kill main
+    Test 1: passed; 5.80 / 5.80 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":3,"open_fds":17,"memory_bytes":1409024,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: create a b
+          Step 3: fetch b unknown
+            fetch: {"hash":"18de7c693ee0c68b","expected":{"text":"c9909b8f62240a2b","bytes":16},"received":{"text":"c9909b8f62240a2b","bytes":16}}
+          Step 4: wait
+          Step 5: kill main
+    Test 2: passed; 5.80 / 5.80 (100.00%); 2/2 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":2,"open_fds":10,"memory_bytes":1409024,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: fetch a k
+            fetch: {"hash":"b8b5b0d611bca8a9","expected":{"text":"cae7936272b7582e","bytes":16},"received":{"text":"cae7936272b7582e","bytes":16}}
+          Step 3: wait
+          Step 4: fetch a k
+            fetch: {"hash":"a6c8c47877c7b90b","expected":{"text":"cae7936272b7582e","bytes":16},"received":{"text":"cae7936272b7582e","bytes":16}}
+          Step 5: wait
+          Step 6: fetch main k
+            fetch: {"hash":"11715c9cfaae8362","expected":{"text":"cae7936272b7582e","bytes":16},"received":{"text":"cae7936272b7582e","bytes":16}}
+          Step 7: wait
+          Step 8: kill main
+        Run 2: passed
+          peak: {"processes":2,"open_fds":10,"memory_bytes":1409024,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: fetch a k
+            fetch: {"hash":"29aac677f5f5ce05","expected":{"text":"7e1d3d82d341c640","bytes":16},"received":{"text":"7e1d3d82d341c640","bytes":16}}
+          Step 3: wait
+          Step 4: fetch a k
+            fetch: {"hash":"3670051e3d8fb443","expected":{"text":"7e1d3d82d341c640","bytes":16},"received":{"text":"7e1d3d82d341c640","bytes":16}}
+          Step 5: wait
+          Step 6: fetch main k
+            fetch: {"hash":"76014b7119b7797e","expected":{"text":"7e1d3d82d341c640","bytes":16},"received":{"text":"7e1d3d82d341c640","bytes":16}}
+          Step 7: wait
+          Step 8: kill main
+    Test 3: passed; 5.80 / 5.80 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":2,"open_fds":10,"memory_bytes":1916928,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: fetch a k
+            fetch: {"hash":"d572048ff1238c3f","expected":{"text":"70e5236ecfcf2b43","bytes":16},"received":{"text":"70e5236ecfcf2b43","bytes":16}}
+          Step 3: wait
+          Step 4: update other
+          Step 5: update !missing
+          Step 6: fetch main k
+            fetch: {"hash":"fdf078b9e5f5f4fe","expected":{"text":"aa4db7d38f123444bd234b6b63c1126791c2fb8f","bytes":40},"received":{"text":"aa4db7d38f123444bd234b6b63c1126791c2fb8f","bytes":40}}
+          Step 7: wait
+          Step 8: fetch a k
+            fetch: {"hash":"3e02ab66e9be0303","expected":{"text":"aa4db7d38f123444bd234b6b63c1126791c2fb8f","bytes":40},"received":{"text":"aa4db7d38f123444bd234b6b63c1126791c2fb8f","bytes":40}}
+          Step 9: wait
+          Step 10: reseed other
+          Step 11: fetch a k
+            fetch: {"hash":"ff8bf205e1980ccb","expected":{"text":"875a57255ed428da55ab66c95056f844effcd24f","bytes":40},"received":{"text":"875a57255ed428da55ab66c95056f844effcd24f","bytes":40}}
+          Step 12: wait
+          Step 13: kill main
+    Test 4: passed; 5.80 / 5.80 (100.00%); 2/2 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":2,"open_fds":10,"memory_bytes":1474560,"cpu_seconds":1}
+          Step 1: update flaky
+          Step 2: fetch main proof
+            fetch: {"hash":"65fb6283a391673a","expected":{"text":"378915ca7c56d82b","bytes":16},"received":{"text":"378915ca7c56d82b","bytes":16}}
+          Step 3: wait
+          Step 4: create main a
+          Step 5: fetch a k
+            fetch: {"hash":"8f058838544bf62b","expected":{"text":"62087318d88a9f38","bytes":16},"received":{"text":"62087318d88a9f38","bytes":16}}
+          Step 6: wait
+          Step 7: update crashy
+          Step 8: fetch main proof
+            fetch: {"hash":"f6e783f74f8bcd6f","expected":{"text":"3dce9f8c9ed0b6bc","bytes":16},"received":{"text":"3dce9f8c9ed0b6bc","bytes":16}}
+          Step 9: wait
+          Step 10: fetch a k
+            fetch: {"hash":"1e098d0a96c73d69","expected":{"text":"877716e58f1989f2","bytes":16},"received":{"text":"877716e58f1989f2","bytes":16}}
+          Step 11: wait
+          Step 12: kill main
+        Run 2: passed
+          peak: {"processes":2,"open_fds":10,"memory_bytes":1966080,"cpu_seconds":1}
+          Step 1: update flaky
+          Step 2: fetch main proof
+            fetch: {"hash":"b35e2ee81284f239","expected":{"text":"be9b7fc85b8962dc","bytes":16},"received":{"text":"be9b7fc85b8962dc","bytes":16}}
+          Step 3: wait
+          Step 4: create main a
+          Step 5: fetch a k
+            fetch: {"hash":"6601c2e55c076e3d","expected":{"text":"cc4dec6891f855ca","bytes":16},"received":{"text":"cc4dec6891f855ca","bytes":16}}
+          Step 6: wait
+          Step 7: update crashy
+          Step 8: fetch main proof
+            fetch: {"hash":"ecf57cba2b9ef2a1","expected":{"text":"cf3287682fb6fbd9","bytes":16},"received":{"text":"cf3287682fb6fbd9","bytes":16}}
+          Step 9: wait
+          Step 10: fetch a k
+            fetch: {"hash":"1d53fecb59757226","expected":{"text":"43b638011da010f2","bytes":16},"received":{"text":"43b638011da010f2","bytes":16}}
+          Step 11: wait
+          Step 12: kill main
+
+Group "kill_and_resources": 43.00 / 43.00 (100.00%)
+  Subgroup "Kill and resources" ("cases"): 43.00 / 43.00 (100.00%)
+    Test 0: passed; 8.60 / 8.60 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":3,"open_fds":17,"memory_bytes":671744,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: create a b
+          Step 3: store a k v
+          Step 4: fetch a k
+            fetch: {"hash":"62a57fdfdb328bcc","expected":{"text":"v","bytes":1},"received":{"text":"v","bytes":1}}
+          Step 5: wait
+          Step 6: kill b
+          Step 7: fetch a k
+            fetch: {"hash":"d7380df866a95cc2","expected":{"text":"v","bytes":1},"received":{"text":"v","bytes":1}}
+          Step 8: wait
+          Step 9: kill main
+    Test 1: passed; 8.60 / 8.60 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":2,"open_fds":10,"memory_bytes":1392640,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: create a b
+          Step 3: create b c
+          Step 4: create main d
+          Step 5: store d k v
+          Step 6: kill a
+          Step 7: fetch d k
+            fetch: {"hash":"46f05bf69d515f72","expected":{"text":"v","bytes":1},"received":{"text":"v","bytes":1}}
+          Step 8: wait
+          Step 9: kill main
+    Test 2: passed; 8.60 / 8.60 (100.00%); 2/2 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":2,"open_fds":10,"memory_bytes":1441792,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: store a k first
+          Step 3: fetch a k
+            fetch: {"hash":"a84c84ea8d1134ab","expected":{"text":"first","bytes":5},"received":{"text":"first","bytes":5}}
+          Step 4: wait
+          Step 5: kill a
+          Step 6: create main a
+          Step 7: fetch a k
+            fetch: {"hash":"96ac968b57974c82","expected":{"text":"eeaecf641a1877ea","bytes":16},"received":{"text":"eeaecf641a1877ea","bytes":16}}
+          Step 8: wait
+          Step 9: store a k second
+          Step 10: fetch a k
+            fetch: {"hash":"7671bd5461f05a5f","expected":{"text":"second","bytes":6},"received":{"text":"second","bytes":6}}
+          Step 11: wait
+          Step 12: kill main
+        Run 2: passed
+          peak: {"processes":2,"open_fds":10,"memory_bytes":1966080,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: store a k first
+          Step 3: fetch a k
+            fetch: {"hash":"e8138d0b2baf64e3","expected":{"text":"first","bytes":5},"received":{"text":"first","bytes":5}}
+          Step 4: wait
+          Step 5: kill a
+          Step 6: create main a
+          Step 7: fetch a k
+            fetch: {"hash":"2e8f080bb4500e28","expected":{"text":"23372de1c9841b4b","bytes":16},"received":{"text":"23372de1c9841b4b","bytes":16}}
+          Step 8: wait
+          Step 9: store a k second
+          Step 10: fetch a k
+            fetch: {"hash":"ddbe37d861beb9bf","expected":{"text":"second","bytes":6},"received":{"text":"second","bytes":6}}
+          Step 11: wait
+          Step 12: kill main
+    Test 3: passed; 8.60 / 8.60 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":3,"open_fds":17,"memory_bytes":5537792,"cpu_seconds":1}
+          Step 1: create main a
+          Step 2: create a b
+          Step 3: store main big 217c09cd869199327d3b165778f69749358117bda54f3c5ab2788fbec818c15b... (2000000 bytes)
+          Step 4: fetch main big
+            fetch: {"hash":"5b218fa85f66977b","expected":{"text":"217c09cd869199327d3b165778f69749358117bda54f3c5ab2788fbec818c15b","bytes":2000000},"received":{"text":"217c09cd869199327d3b165778f69749358117bda54f3c5ab2788fbec818c15b","bytes":2000000}}
+          Step 5: wait
+          Step 6: fetch b big
+            fetch: {"hash":"eb114e38967e1e77","expected":{"text":"217c09cd869199327d3b165778f69749358117bda54f3c5ab2788fbec818c15b","bytes":2000000},"received":{"text":"217c09cd869199327d3b165778f69749358117bda54f3c5ab2788fbec818c15b","bytes":2000000}}
+          Step 7: wait
+          Step 8: kill main
+    Test 4: passed; 8.60 / 8.60 (100.00%); 1/1 passing runs
+      Selected run 1: 100.00% credit; resource 0.00%, leftovers 0.00%, total 0.00%
+        Counted soft axes: []
+        Counted leftovers: []
+      Execution: ran (all)
+        Run 1: passed
+          peak: {"processes":32,"open_fds":220,"memory_bytes":1392640,"cpu_seconds":1}
+          Step 1: create main c1
+          Step 2: create main c2
+          Step 3: create main c3
+          Step 4: create c1 n4
+          Step 5: create c1 n5
+          Step 6: create c2 n6
+          Step 7: create c2 n7
+          Step 8: create c3 n8
+          Step 9: create c3 n9
+          Step 10: create n4 n10
+          Step 11: create n4 n11
+          Step 12: create n5 n12
+          Step 13: create n5 n13
+          Step 14: create n6 n14
+          Step 15: create n6 n15
+          Step 16: create n7 n16
+          Step 17: create n7 n17
+          Step 18: create n8 n18
+          Step 19: create n8 n19
+          Step 20: create n9 n20
+          Step 21: create n9 n21
+          Step 22: create n10 n22
+          Step 23: create n10 n23
+          Step 24: create n11 n24
+          Step 25: create n11 n25
+          Step 26: create n12 n26
+          Step 27: create n12 n27
+          Step 28: create n13 n28
+          Step 29: create n13 n29
+          Step 30: create n14 n30
+          Step 31: create n14 n31
+          Step 32: store main top T
+          Step 33: fetch main top
+            fetch: {"hash":"25b011ce73477c71","expected":{"text":"T","bytes":1},"received":{"text":"T","bytes":1}}
+          Step 34: wait
+          Step 35: fetch n24 top
+            fetch: {"hash":"f4069b3fe9d46728","expected":{"text":"T","bytes":1},"received":{"text":"T","bytes":1}}
+          Step 36: fetch n25 top
+            fetch: {"hash":"7f77e752cf4344d0","expected":{"text":"T","bytes":1},"received":{"text":"T","bytes":1}}
+          Step 37: fetch n26 top
+            fetch: {"hash":"3982bd4439f2e345","expected":{"text":"T","bytes":1},"received":{"text":"T","bytes":1}}
+          Step 38: fetch n27 top
+            fetch: {"hash":"37c8315da0243175","expected":{"text":"T","bytes":1},"received":{"text":"T","bytes":1}}
+          Step 39: fetch n28 top
+            fetch: {"hash":"e6fb4187aa8c7f29","expected":{"text":"T","bytes":1},"received":{"text":"T","bytes":1}}
+          Step 40: fetch n29 top
+            fetch: {"hash":"2cad1a969b1e74ca","expected":{"text":"T","bytes":1},"received":{"text":"T","bytes":1}}
+          Step 41: fetch n30 top
+            fetch: {"hash":"3e1d6b14266a7f31","expected":{"text":"T","bytes":1},"received":{"text":"T","bytes":1}}
+          Step 42: fetch n31 top
+            fetch: {"hash":"aa097e8b09d81471","expected":{"text":"T","bytes":1},"received":{"text":"T","bytes":1}}
+          Step 43: wait
+          Step 44: kill main
